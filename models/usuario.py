@@ -1,11 +1,6 @@
-from pydantic import BaseModel, Field
-from typing import Optional, List
+from connection.database import connect_to_mongo
 
-class Usuario(BaseModel):
-    id: Optional[str] = Field(alias="_id")
-    nombre: str
-    email: str
-    objetivo: Optional[str] = None
-    lista_logros: Optional[List[str]] = []
+db = connect_to_mongo()
 
+usuarios_collection = db["usuarios"]
 
