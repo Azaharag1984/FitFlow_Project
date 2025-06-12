@@ -1,7 +1,7 @@
 from bson import ObjectId
 from fastapi import HTTPException
 from models.usuario import usuarios_collection
-from connection.database import db
+# from connection.database import db
 from datetime import datetime
 from pymongo import DESCENDING
 
@@ -27,10 +27,12 @@ def get_all_usuarios():
     try:
         # Recupera todos los usuarios
         usuarios = list(usuarios_collection.find())
+        
         if not usuarios:
             raise HTTPException(status_code=404, detail="No se encontraron usuarios")
         
-        return usuarios
+        return usuarios  # Retorna la lista de usuarios
+
     except HTTPException as e:
         raise e  # Re-lanza la excepción personalizada
     except Exception as e:

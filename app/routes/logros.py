@@ -1,10 +1,10 @@
 from fastapi import APIRouter
 from controllers import logro_controller
-from schemas.logro_schema import LogrosSchema
+from schemas.logro_schema import LogroBase
 
 router = APIRouter()
 
-@router.get("/logros/{logro_id}", response_model=LogrosSchema)
+@router.get("/logros/{logro_id}", response_model=LogroBase)
 def get_logro(logro_id: str):
     """
     Obtiene un logro por su ID.
@@ -12,7 +12,7 @@ def get_logro(logro_id: str):
     return logro_controller.get_logro_by_id(logro_id)
 
 
-@router.get("/logros", response_model=list[LogrosSchema])
+@router.get("/logros", response_model=list[LogroBase])
 def get_all_logros():
     """
     Obtiene todos los logros.
@@ -21,7 +21,7 @@ def get_all_logros():
 
 
 @router.post("/logros", response_model=str)
-def create_logro(logro_data: LogrosSchema):
+def create_logro(logro_data: LogroBase):
     """
     Crea un nuevo logro.
     """
@@ -29,7 +29,7 @@ def create_logro(logro_data: LogrosSchema):
 
 
 @router.put("/logros/{logro_id}", response_model=str)
-def update_logro(logro_id: str, logro_data: LogrosSchema):
+def update_logro(logro_id: str, logro_data: LogroBase):
     """
     Actualiza un logro existente.
     """
@@ -44,7 +44,7 @@ def delete_logro(logro_id: str):
     return logro_controller.delete_logro(logro_id)
 
 
-@router.get("/logros/usuario/{usuario_id}", response_model=list[LogrosSchema])
+@router.get("/logros/usuario/{usuario_id}", response_model=list[LogroBase])
 def get_logros_by_usuario(usuario_id: str):
     """
     Obtiene todos los logros asociados a un usuario.

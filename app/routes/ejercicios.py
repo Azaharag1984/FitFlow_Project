@@ -1,11 +1,11 @@
 from fastapi import APIRouter
 from controllers import ejercicio_controller
-from schemas.ejercicio_schema import EjerciciosSchema
+from schemas.ejercicio_schema import EjercicioBase
 
 router = APIRouter()
 
 
-@router.get("/ejercicios/{ejercicio_id}", response_model=EjerciciosSchema)
+@router.get("/ejercicios/{ejercicio_id}", response_model=EjercicioBase)
 def get_ejercicio(ejercicio_id: str):
     """
     Obtiene un ejercicio por su ID.
@@ -13,7 +13,7 @@ def get_ejercicio(ejercicio_id: str):
     return ejercicio_controller.get_ejercicio_by_id(ejercicio_id)
 
 
-@router.get("/ejercicios", response_model=list[EjerciciosSchema])
+@router.get("/ejercicios", response_model=list[EjercicioBase])
 def get_all_ejercicios():
     """
     Obtiene todos los ejercicios.
@@ -22,7 +22,7 @@ def get_all_ejercicios():
 
 
 @router.post("/ejercicios", response_model=str)
-def create_ejercicio(ejercicio_data: EjerciciosSchema):
+def create_ejercicio(ejercicio_data: EjercicioBase):
     """
     Crea un nuevo ejercicio.
     """
@@ -30,7 +30,7 @@ def create_ejercicio(ejercicio_data: EjerciciosSchema):
 
 
 @router.put("/ejercicios/{ejercicio_id}", response_model=str)
-def update_ejercicio(ejercicio_id: str, ejercicio_data: EjerciciosSchema):
+def update_ejercicio(ejercicio_id: str, ejercicio_data: EjercicioBase):
     """
     Actualiza un ejercicio existente.
     """
@@ -45,7 +45,7 @@ def delete_ejercicio(ejercicio_id: str):
     return ejercicio_controller.delete_ejercicio(ejercicio_id)  
 
 
-@router.get("/ejercicios/usuario/{usuario_id}", response_model=list[EjerciciosSchema])
+@router.get("/ejercicios/usuario/{usuario_id}", response_model=list[EjercicioBase])
 def get_ejercicios_by_usuario(usuario_id: str):
     """
     Obtiene todos los ejercicios asociados a un usuario.
@@ -53,7 +53,7 @@ def get_ejercicios_by_usuario(usuario_id: str):
     return ejercicio_controller.get_ejercicios_by_usuario(usuario_id)
 
 
-@router.get("/ejercicios/ejercicio/{ejercicio_id}", response_model=list[EjerciciosSchema])
+@router.get("/ejercicios/ejercicio/{ejercicio_id}", response_model=list[EjercicioBase])
 def get_ejercicios_by_ejercicio(ejercicio_id: str):
     """
     Obtiene todos los ejercicios asociados a un ejercicio de conversación.

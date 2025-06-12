@@ -5,7 +5,7 @@ import requests
 from datetime import datetime
 
 # Dirección base de tu API FastAPI (ajústala si es necesario)
-API_URL = "http://localhost:8000"
+API_URL = "http://localhost:27017"
 
 # 🧠 Funciones para interactuar con la API
 def get_usuarios():

@@ -1,8 +1,7 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+from typing import Optional
 
-class EjerciciosSchema(BaseModel):
-    name: str
-    effect: str
-
-    class Config:
-        orm_mode = True
+class EjercicioBase(BaseModel):
+    nombre: str
+    grupo_muscular: Optional[str]
+    descripcion: Optional[str]

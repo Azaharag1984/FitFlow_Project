@@ -1,10 +1,10 @@
 from fastapi import APIRouter
 from controllers import registro_controller
-from schemas.registro_schema import RegistrosSchema
+from schemas.registro_schema import RegistroBase
 
 router = APIRouter()
 
-@router.get("/registros/{registro_id}", response_model=RegistrosSchema)
+@router.get("/registros/{registro_id}", response_model=RegistroBase)
 def get_registro(registro_id: str):
     """
     Obtiene un registro por su ID.
@@ -12,7 +12,7 @@ def get_registro(registro_id: str):
     return registro_controller.get_registro_by_id(registro_id)
 
 
-@router.get("/registros", response_model=list[RegistrosSchema])
+@router.get("/registros", response_model=list[RegistroBase])
 def get_all_registros():
     """
     Obtiene todos los registros.
@@ -21,7 +21,7 @@ def get_all_registros():
 
 
 @router.post("/registros", response_model=str)
-def create_registro(registro_data: RegistrosSchema):
+def create_registro(registro_data: RegistroBase):
     """
     Crea un nuevo registro.
     """
@@ -29,7 +29,7 @@ def create_registro(registro_data: RegistrosSchema):
 
 
 @router.put("/registros/{registro_id}", response_model=str)
-def update_registro(registro_id: str, registro_data: RegistrosSchema):
+def update_registro(registro_id: str, registro_data: RegistroBase):
     """
     Actualiza un registro existente.
     """
@@ -44,7 +44,7 @@ def delete_registro(registro_id: str):
     return registro_controller.delete_registro(registro_id)
 
 
-@router.get("/registros/usuario/{usuario_id}", response_model=list[RegistrosSchema])
+@router.get("/registros/usuario/{usuario_id}", response_model=list[RegistroBase])
 def get_registros_by_usuario(usuario_id: str):
     """
     Obtiene todos los registros asociados a un usuario.

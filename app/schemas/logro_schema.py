@@ -1,8 +1,11 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+from typing import Optional
+from datetime import datetime
 
-class LogrosSchema(BaseModel):
-    name: str
-    effect: str
-
-    class Config:
-        orm_mode = True
+class LogroBase(BaseModel):
+    usuario_id: str
+    ejercicio_id: Optional[str]
+    descripcion: str
+    valor: str
+    fecha_logro: datetime
+    tipo: Optional[str]

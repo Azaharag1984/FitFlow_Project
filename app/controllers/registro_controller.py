@@ -1,7 +1,6 @@
 from bson import ObjectId
 from fastapi import HTTPException
 from models.registro import registros_collection
-from connection.database import db
 from datetime import datetime
 from pymongo import DESCENDING
 

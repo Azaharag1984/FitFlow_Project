@@ -1,9 +1,16 @@
 from fastapi import FastAPI
-from app.connection.database import connect_to_mongo, close_mongo_connection
+from connection.database import connect_to_mongo, close_mongo_connection
+from routes import usuarios, registros, logros, ejercicios, chatbot
+
 
 # Create the FastAPI application instance
 app = FastAPI()
 
+app.include_router(usuarios.router)
+app.include_router(registros.router)
+app.include_router(logros.router)
+app.include_router(ejercicios.router)
+app.include_router(chatbot.router)
 
 # Startup event that runs when the application starts
 @app.on_event("startup")

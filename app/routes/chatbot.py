@@ -1,10 +1,10 @@
 from fastapi import APIRouter, Path, Query
 from controllers import conversacion_controller
-from schemas.conversacion_schema import ConversacionesSchema
+from schemas.conversacion_schema import ConversacionBase
 
 router = APIRouter()
 
-@router.get("/conversaciones/{conversacion_id}", response_model=ConversacionesSchema)
+@router.get("/conversaciones/{conversacion_id}", response_model=ConversacionBase)
 def get_conversacion(conversacion_id: str):
     """
     Obtiene una conversación por su ID.
@@ -12,7 +12,7 @@ def get_conversacion(conversacion_id: str):
     return conversacion_controller.get_conversacion_by_id(conversacion_id)
 
 
-@router.get("/conversaciones", response_model=list[ConversacionesSchema])
+@router.get("/conversaciones", response_model=list[ConversacionBase])
 def get_all_conversaciones():
     """
     Obtiene todas las conversaciones.
@@ -21,7 +21,7 @@ def get_all_conversaciones():
 
 
 @router.post("/conversaciones", response_model=str)
-def create_conversacion(conversacion_data: ConversacionesSchema):
+def create_conversacion(conversacion_data: ConversacionBase):
     """
     Crea una nueva conversación.
     """
@@ -29,7 +29,7 @@ def create_conversacion(conversacion_data: ConversacionesSchema):
 
 
 @router.put("/conversaciones/{conversacion_id}", response_model=str)
-def update_conversacion(conversacion_id: str, conversacion_data: ConversacionesSchema):
+def update_conversacion(conversacion_id: str, conversacion_data: ConversacionBase):
     """
     Actualiza una conversación existente.
     """
@@ -44,7 +44,7 @@ def delete_conversacion(conversacion_id: str):
     return conversacion_controller.delete_conversacion(conversacion_id)
 
 
-@router.get("/conversaciones/usuario/{usuario_id}", response_model=list[ConversacionesSchema])
+@router.get("/conversaciones/usuario/{usuario_id}", response_model=list[ConversacionBase])
 def get_conversaciones_by_usuario(usuario_id: str):
     """
     Obtiene todas las conversaciones asociadas a un usuario.
