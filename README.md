@@ -28,7 +28,9 @@
 
 fitflow_api/
 ├── main.py                          # Punto de entrada FastAPI
+
 ├── database.py                      # Conexión a MongoDB
+
 ├── requirements.txt                 # Dependencias del proyecto
 ├── .env                             # Variables de entorno (ej. MONGO_URL, OPENAI_KEY)
 ├── README.md                        # Documentación inicial
