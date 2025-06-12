@@ -27,43 +27,74 @@
 ## 📁 Estructura del proyecto
 
 fitflow_api/
+
 ├── main.py                          # Punto de entrada FastAPI
 
 ├── database.py                      # Conexión a MongoDB
 
 ├── requirements.txt                 # Dependencias del proyecto
-├── .env                             # Variables de entorno (ej. MONGO_URL, OPENAI_KEY)
-├── README.md                        # Documentación inicial
-│
-├── models/                          # Modelos Pydantic (validación de datos)
-│   ├── usuario.py                   # Usuario (nombre, email, objetivo...)
-│   ├── ejercicio.py                 # Ejercicio (nombre, grupo muscular...)
-│   ├── registro.py                  # Registro de sets
-│   ├── logro.py                     # Logros alcanzados
-│   └── conversacion.py              # Conversaciones con el chatbot
-│
-├── controllers/                    # Lógica de negocio y acceso a BBDD
-│   ├── usuario_controller.py
-│   ├── ejercicio_controller.py
-│   ├── registro_controller.py
-│   ├── logro_controller.py
-│   └── conversacion_controller.py
-│
-├── routes/                         # Rutas de la API (FastAPI)
-│   ├── usuarios.py
-│   ├── ejercicios.py
-│   ├── registros.py
-│   ├── logros.py
-│   └── chatbot.py
-│
-├── utils/                          # Funciones auxiliares
-│   └── openai_client.py            # Llamadas a OpenAI para el chatbot
-│
-└── streamlit_app/                  # Interfaz gráfica en Streamlit
-    ├── app.py                      # Principal
-    ├── components/                # Formularios, gráficos, dashboards
-    └── styles/                    # CSS personalizado (opcional)
 
+├── .env                             # Variables de entorno (ej. MONGO_URL, OPENAI_KEY)
+
+├── README.md                        # Documentación inicial
+
+│
+
+├── models/                          # Modelos Pydantic (validación de datos)
+
+│   ├── usuario.py                   # Usuario (nombre, email, objetivo...)
+
+│   ├── ejercicio.py                 # Ejercicio (nombre, grupo muscular...)
+
+│   ├── registro.py                  # Registro de sets
+
+│   ├── logro.py                     # Logros alcanzados
+
+│   └── conversacion.py              # Conversaciones con el chatbot
+
+│
+
+├── controllers/                    # Lógica de negocio y acceso a BBDD
+
+│   ├── usuario_controller.py
+
+│   ├── ejercicio_controller.py
+
+│   ├── registro_controller.py
+
+│   ├── logro_controller.py
+
+│   └── conversacion_controller.py
+
+│
+
+├── routes/                         # Rutas de la API (FastAPI)
+
+│   ├── usuarios.py
+
+│   ├── ejercicios.py
+
+│   ├── registros.py
+
+│   ├── logros.py
+
+│   └── chatbot.py
+
+│
+
+├── utils/                          # Funciones auxiliares
+
+│   └── openai_client.py            # Llamadas a OpenAI para el chatbot
+
+│
+
+└── streamlit_app/                  # Interfaz gráfica en Streamlit
+
+    ├── app.py                      # Principal
+    
+    ├── components/                # Formularios, gráficos, dashboards
+    
+    └── styles/                    # CSS personalizado (opcional)
 
 
 # 📦 Instalación y uso local
