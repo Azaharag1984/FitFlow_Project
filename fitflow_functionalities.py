@@ -2,7 +2,7 @@
 # Incluiré funcionalidades específicas para controllers y rutas adicionales, como progreso, estadísticas y chatbot
 
 # controllers/registro_controller.py (funciones adicionales)
-from database import db
+from .app.connection.database import db
 from bson import ObjectId
 from datetime import datetime
 from pymongo import DESCENDING

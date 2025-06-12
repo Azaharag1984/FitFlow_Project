@@ -1,4 +1,4 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Path, Query
 from controllers import conversacion_controller
 from schemas.conversacion_schema import ConversacionesSchema
 
@@ -50,3 +50,36 @@ def get_conversaciones_by_usuario(usuario_id: str):
     Obtiene todas las conversaciones asociadas a un usuario.
     """
     return conversacion_controller.get_conversaciones_by_usuario(usuario_id)
+
+
+@router.get("/usuarios/{usuario_id}/ultimos-mensajes")
+async def obtener_ultimos_mensajes(
+usuario_id: str = Path(..., description="ID del usuario"),
+n: int = Query(5, description="Número de mensajes a recuperar")
+):
+    """
+    Obtiene los últimos mensajes de un usuario.
+    """
+    return conversacion_controller.get_ultimos_mensajes(usuario_id, n)
+
+
+@router.get("/usuarios/{usuario_id}/mensajes/tema")
+async def obtener_mensajes_por_tema(
+usuario_id: str = Path(..., description="ID del usuario"),
+tema: str = Query(..., description="Tema de los mensajes")
+):
+    """
+    Obtiene los mensajes de un usuario por tema.
+    """
+    return conversacion_controller.get_mensajes_por_tema(usuario_id, tema)
+
+
+@router.get("/usuarios/{usuario_id}/estado-animo")
+async def obtener_estado_animo(
+usuario_id: str = Path(..., description="ID del usuario")
+):
+    """
+    Analiza el estado de ánimo de un usuario basado en sus conversaciones.
+    """
+    from controllers import conversaciones_controller
+    return conversacion_controller.analizar_estado_animo(usuario_id)
