@@ -76,7 +76,7 @@ def update_usuario(usuario_id: str, usuario_data: dict):
         if result.matched_count == 0:
             raise HTTPException(status_code=404, detail="Usuario no encontrado")
         
-        return {"message": "Usuario actualizado exitosamente"}
+        return str({"message": "Usuario actualizado exitosamente"})
     except HTTPException as e:
         raise e  # Re-lanza la excepción personalizada
     except Exception as e:
@@ -95,7 +95,7 @@ def delete_usuario(usuario_id: str):
         if result.deleted_count == 0:
             raise HTTPException(status_code=404, detail="Usuario no encontrado")
         
-        return {"message": "Usuario eliminado exitosamente"}
+        return str({"message": "Usuario eliminado exitosamente"})
     except HTTPException as e:
         raise e  # Re-lanza la excepción personalizada
     except Exception as e:

@@ -2,6 +2,7 @@ from fastapi import APIRouter
 from controllers import usuario_controller
 from schemas.usuario_schema import UsuariosSchema
 
+
 router = APIRouter()
 
 @router.get("/usuarios/{usuario_id}", response_model=UsuariosSchema)

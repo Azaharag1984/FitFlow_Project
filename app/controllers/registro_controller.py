@@ -90,7 +90,7 @@ def delete_registro(registro_id: str):
         if result.deleted_count == 0:
             raise HTTPException(status_code=404, detail="Registro no encontrado")
         
-        return {"detail": "Registro eliminado exitosamente"}
+        return str({"detail": "Registro eliminado exitosamente"})
     except HTTPException as e:
         raise e  # Re-lanza la excepción personalizada
     except Exception as e:
