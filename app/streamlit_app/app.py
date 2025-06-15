@@ -16,9 +16,9 @@ def make_api_request(method, endpoint, data=None, params=None):
     """
     url = f"{FASTAPI_BASE_URL}/{endpoint}"
     # Mensajes de depuración solo en la consola, no en la UI de Streamlit
-    # print(f"DEBUG (Consola): Realizando {method} request a: {url}") 
-    # if data:
-    #     print(f"DEBUG (Consola): Datos enviados: {data}") 
+    print(f"DEBUG (Consola): Realizando {method} request a: {url}")
+    if data:
+        print(f"DEBUG (Consola): Datos enviados: {data}")
 
     try:
         if method == "GET":
@@ -33,13 +33,13 @@ def make_api_request(method, endpoint, data=None, params=None):
             st.error(f"Método HTTP no soportado: {method}")
             return None
 
-        # print(f"DEBUG (Consola): Respuesta de la API (Status: {response.status_code})")
+        print(f"DEBUG (Consola): Respuesta de la API (Status: {response.status_code})")
         
         response.raise_for_status() # Lanza una excepción si la respuesta no es 2xx
 
         try:
             json_response = response.json()
-            # print(f"DEBUG (Consola): Respuesta JSON recibida: {json_response}")
+            print(f"DEBUG (Consola): Respuesta JSON recibida: {json_response}")
             return json_response
         except json.JSONDecodeError:
             if response.status_code == 204:
@@ -56,15 +56,15 @@ def make_api_request(method, endpoint, data=None, params=None):
         except json.JSONDecodeError:
             detail = e.response.text
         st.error(f"Error {status_code}: {detail}")
-        # print(f"DEBUG (Consola): HTTPError: {status_code} - {detail}")
+        print(f"DEBUG (Consola): HTTPError: {status_code} - {detail}")
         return None
     except requests.exceptions.ConnectionError:
         st.error(f"No se pudo conectar con el servidor FastAPI en {FASTAPI_BASE_URL}. Asegúrate de que esté corriendo.")
-        # print(f"DEBUG (Consola): ConnectionError: No se pudo conectar con {FASTAPI_BASE_URL}")
+        print(f"DEBUG (Consola): ConnectionError: No se pudo conectar con {FASTAPI_BASE_URL}")
         return None
     except Exception as e:
         st.error(f"Ocurrió un error inesperado: {e}")
-        # print(f"DEBUG (Consola): Error inesperado: {e}")
+        print(f"DEBUG (Consola): Error inesperado: {e}")
         return None
 
 def get_display_options(entities, entity_type):
@@ -75,34 +75,50 @@ def get_display_options(entities, entity_type):
     options_dict = {}
     if entities:
         for entity in entities:
+            # Primero intenta obtener _id (estándar de MongoDB)
             entity_id = entity.get('_id')
+            
+            # Si _id no es un diccionario con '$oid', o si es un ObjectId directo
             if isinstance(entity_id, dict) and '$oid' in entity_id:
                 entity_id = entity_id['$oid']
             elif entity_id is not None:
-                entity_id = str(entity_id) # Ensure ID is always a string
+                # Intenta convertir cualquier cosa que no sea None o dict con $oid a string.
+                # Esto incluye directamente ObjectId si el driver lo devuelve así.
+                entity_id = str(entity_id) 
+            
+            # Si el _id todavía es None o se convierte a una cadena vacía, intentamos 'id' como fallback.
+            # Esto es útil si FastAPI alias _id a id en el modelo de respuesta.
+            if entity_id is None or (isinstance(entity_id, str) and not entity_id.strip()):
+                entity_id = entity.get('id')
+                if entity_id is not None:
+                    entity_id = str(entity_id)
+                
+            # Si después de todas las comprobaciones, entity_id sigue siendo None o vacía, saltamos.
+            if entity_id is None or (isinstance(entity_id, str) and not entity_id.strip()):
+                print(f"ADVERTENCIA (Consola): Campo '_id' o 'id' no encontrado o vacío para la entidad de tipo '{entity_type}'. Saltando esta entidad: {entity}")
+                continue # Skip this entity if no suitable ID is found
 
-            if entity_id:
-                display_name = ""
-                if entity_type == "usuarios":
-                    display_name = entity.get('nombre', 'Usuario sin nombre')
-                elif entity_type == "registros":
-                    date_part = entity.get('fecha_registro', 'N/A')
-                    if isinstance(date_part, str) and 'T' in date_part:
-                        date_part = date_part.split('T')[0] # Get only date part
-                    display_name = f"{entity.get('ejercicio_nombre', 'Ejercicio sin nombre')} - {date_part}"
-                elif entity_type == "logros":
-                    display_name = entity.get('descripcion', 'Logro sin descripción')
-                elif entity_type == "ejercicios":
-                    display_name = entity.get('nombre', 'Ejercicio sin nombre')
-                elif entity_type == "conversaciones":
-                    date_part = entity.get('fecha', 'N/A')
-                    if isinstance(date_part, str) and 'T' in date_part:
-                        date_part = date_part.split('T')[0]
-                    display_name = f"Usuario: {entity.get('usuario_id', 'N/A')}, Fecha: {date_part}"
-                else:
-                    display_name = "Entidad Desconocida" # Fallback
+            display_name = ""
+            if entity_type == "usuarios":
+                display_name = entity.get('nombre', 'Usuario sin nombre')
+            elif entity_type == "registros":
+                date_part = entity.get('fecha_registro', 'N/A')
+                if isinstance(date_part, str) and 'T' in date_part:
+                    date_part = date_part.split('T')[0] # Get only date part
+                display_name = f"{entity.get('ejercicio_nombre', 'Ejercicio sin nombre')} - {date_part}"
+            elif entity_type == "logros":
+                display_name = entity.get('descripcion', 'Logro sin descripción')
+            elif entity_type == "ejercicios":
+                display_name = entity.get('nombre', 'Ejercicio sin nombre')
+            elif entity_type == "conversaciones":
+                date_part = entity.get('fecha', 'N/A')
+                if isinstance(date_part, str) and 'T' in date_part:
+                    date_part = date_part.split('T')[0]
+                display_name = f"Usuario: {entity.get('usuario_id', 'N/A')}, Fecha: {date_part}"
+            else:
+                display_name = "Entidad Desconocida" # Fallback
 
-                options_dict[entity_id] = display_name
+            options_dict[entity_id] = display_name
     return options_dict
 
 def _format_selectbox_option(option_id, options_dict, placeholder_text):
@@ -123,12 +139,15 @@ def display_entity_list(entity_name, entities, excluded_keys=None):
         processed_entities = []
         for entity in entities:
             processed_entity = entity.copy()
+            # Intenta normalizar el _id para visualización en el dataframe
             if '_id' in processed_entity:
                 if isinstance(processed_entity['_id'], dict) and '$oid' in processed_entity['_id']:
                     processed_entity['_id'] = processed_entity['_id']['$oid']
                 else: 
                     processed_entity['_id'] = str(processed_entity['_id']) 
-            
+            elif 'id' in processed_entity and '_id' not in processed_entity: # Si no hay _id pero hay id (alias de FastAPI)
+                processed_entity['_id'] = str(processed_entity['id']) # Usa 'id' como fallback para mostrar en tabla
+                
             if excluded_keys:
                 for key in excluded_keys:
                     processed_entity.pop(key, None)
@@ -146,34 +165,34 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# --- Estilos CSS personalizados para un aspecto profesional y curioso (¡FINALMENTE CORREGIDOS!) ---
+# --- Estilos CSS personalizados para un aspecto profesional y curioso (¡VERSION FINAL Y SUPERIOR!) ---
 st.markdown("""
 <style>
     /* Global body and container styles */
     .stApp {
-        background-color: #2e7d32; /* Light gray background for the app */
+        background-color: #00ff40; /* Light gray background for the app */
         font-family: 'Inter', sans-serif; /* Consistent font */
         color: #333333; /* Default text color for the entire app */
     }
     .reportview-container {
-        background: #2e7d32; /* Ensure report container matches body */
+        background: #00ff40; /* Ensure report container matches body */
     }
     
     /* Sidebar styling */
     .sidebar .sidebar-content {
-        background: #2e7d32; /* White sidebar background */
+        background: #ffffff; /* White sidebar background */
         border-right: 1px solid #e6e6e6; /* Subtle border */
         box-shadow: 2px 0 5px rgba(0,0,0,0.05); /* Soft shadow */
     }
     /* Specific selector for Streamlit sidebar radio container (may change with updates) */
-    .st-emotion-cache-1kyx633 { /* Ensure this selector is up-to-date with Streamlit's latest version */
+    .st-emotion-cache-1kyx633 { 
         background-color: #f8f9fa; /* Slightly darker background for the radio options area */
         border-radius: 10px;
         padding: 10px;
         margin-top: 10px;
     }
     /* Specific selector for radio options text (may change with updates) */
-    .st-emotion-cache-1kyx633 .st-bd { /* Ensure this selector is up-to-date with Streamlit's latest version */
+    .st-emotion-cache-1kyx633 .st-bd { 
         font-weight: bold;
         color: #555;
     }
@@ -207,78 +226,86 @@ st.markdown("""
         box-shadow: 3px 3px 8px rgba(0,0,0,0.3); /* Enhanced shadow on hover */
     }
     /* Specific styling for delete buttons */
-    .stButton>button[kind="secondaryFormSubmit"] {
-        background-color: #dc3545; /* Red for delete actions */
+    /* st.form_submit_button for delete */
+    .stButton button[data-testid="stFormSubmitButton"][aria-label*="Eliminar"] {
+        background-color: #dc3545 !important; /* Red for delete actions */
     }
-    .stButton>button[kind="secondaryFormSubmit"]:hover {
-        background-color: #c82333;
+    .stButton button[data-testid="stFormSubmitButton"][aria-label*="Eliminar"]:hover {
+        background-color: #c82333 !important;
+    }
+    /* General st.button for delete confirmation */
+    .stButton button[aria-label*="Sí, Eliminar"] {
+        background-color: #dc3545 !important;
+    }
+    .stButton button[aria-label*="Sí, Eliminar"]:hover {
+        background-color: #c82333 !important;
     }
 
 
     /* Input fields (text, textarea, number, date) - FORCED WHITE background and BLACK text */
-    /* Target the input elements directly */
-    .stTextInput input[data-baseweb="input"], 
-    .stTextArea textarea[data-baseweb="textarea"],
-    .stNumberInput input[data-baseweb="input"],
-    .stDateInput input[data-baseweb="input"] {
-        border-radius: 8px;
-        border: 1px solid #ccc;
-        padding: 8px 10px;
-        box-shadow: inset 1px 1px 3px rgba(0,0,0,0.05); /* Inner shadow for depth */
-        transition: border-color 0.3s ease, box-shadow 0.3s ease;
-        background-color: #2e7d32 !important; /* FORCED WHITE background for inputs */
-        color: #000000 !important; /* FORCED BLACK text for inputs */
+    /* Target the actual input elements using attribute selectors for highest specificity */
+    input[data-baseweb="input"], 
+    textarea[data-baseweb="textarea"] {
+        border-radius: 8px !important;
+        border: 1px solid #ccc !important;
+        padding: 8px 10px !important;
+        box-shadow: inset 1px 1px 3px rgba(0,0,0,0.05) !important; /* Inner shadow for depth */
+        background-color: #ffffff !important; /* FORCED WHITE background */
+        color: #000000 !important; /* FORCED BLACK text */
     }
     /* Placeholder text within inputs */
-    .stTextInput input::placeholder, 
-    .stTextArea textarea::placeholder {
+    input[data-baseweb="input"]::placeholder, 
+    textarea[data-baseweb="textarea"]::placeholder {
         color: #6c757d !important; /* Lighter grey for placeholder */
     }
     /* Focus state for inputs */
-    .stTextInput input:focus, 
-    .stTextArea textarea:focus,
-    .stNumberInput input:focus,
-    .stDateInput input:focus {
-        border-color: #4CAF50; /* Highlight on focus */
-        box-shadow: inset 1px 1px 3px rgba(0,0,0,0.05), 0 0 0 0.2rem rgba(76, 175, 80, 0.25); /* Focus ring */
-        outline: none;
+    input[data-baseweb="input"]:focus, 
+    textarea[data-baseweb="textarea"]:focus {
+        border-color: #4CAF50 !important; /* Highlight on focus */
+        box-shadow: inset 1px 1px 3px rgba(0,0,0,0.05), 0 0 0 0.2rem rgba(76, 175, 80, 0.25) !important; /* Focus ring */
+        outline: none !important;
     }
     /* Labels of input fields (e.g., "Nombre del Usuario*") */
     .stForm label {
         color: #000000 !important; /* FORCED BLACK text for all input labels */
-        font-weight: bold; /* Make labels stand out */
+        font-weight: bold !important; /* Make labels stand out */
     }
 
     /* st.selectbox specific styling - FORCED WHITE background and BLACK text */
     /* Target the currently displayed value container in the selectbox */
-    .stSelectbox [data-baseweb="select"] > div:first-child { /* This targets the input-like part of selectbox */
-        border-radius: 8px;
-        border: 1px solid #ccc;
-        padding: 8px 10px;
-        box-shadow: inset 1px 1px 3px rgba(0,0,0,0.05);
-        background-color: #2e7d32 !important; /* FORCED WHITE background for the selected value area */
+    /* This targets the main visible part of the selectbox before dropdown */
+    [data-baseweb="select"] > div:first-child { 
+        border-radius: 8px !important;
+        border: 1px solid #ccc !important;
+        padding: 8px 10px !important;
+        box-shadow: inset 1px 1px 3px rgba(0,0,0,0.05) !important;
+        background-color: #ffffff !important; /* FORCED WHITE background for the selected value area */
         color: #000000 !important; /* FORCED BLACK text for the selected value */
     }
+    /* Target the dropdown arrow */
+    [data-baseweb="select"] svg {
+        color: #000000 !important; /* Make dropdown arrow black */
+    }
     /* Target the dropdown list container when it's open */
-    .stSelectbox [data-baseweb="popover"] > div[role="listbox"] { /* This targets the actual dropdown menu */
-        background-color: #2e7d32 !important; /* FORCED WHITE background for the dropdown list */
-        border-radius: 8px;
-        border: 1px solid #ccc;
-        box-shadow: 0 4px 8px rgba(0,0,0,0.1);
-        z-index: 10000; /* Ensure it appears above everything else */
+    [data-baseweb="popover"] > div[role="listbox"] { /* This targets the actual dropdown menu */
+        background-color: #ffffff !important; /* FORCED WHITE background for the dropdown list */
+        border-radius: 8px !important;
+        border: 1px solid #ccc !important;
+        box-shadow: 0 4px 8px rgba(0,0,0,0.1) !important;
+        z-index: 10000 !important; /* Ensure it appears above everything else */
     }
     /* Target individual options within the dropdown list */
-    .stSelectbox [role="option"] {
+    [role="option"] {
         color: #000000 !important; /* FORCED BLACK text for options */
-        background-color: #2e7d32 !important; /* FORCED WHITE background for options */
-        padding: 8px 10px;
+        background-color: #ffffff !important; /* FORCED WHITE background for options */
+        padding: 8px 10px !important;
     }
     /* Hover state for dropdown options */
-    .stSelectbox [role="option"]:hover {
+    [role="option"]:hover {
         background-color: #f0f0f0 !important; /* Light gray on hover */
     }
     /* Selected option in the dropdown list */
-    .stSelectbox [role="option"][aria-selected="true"] {
+    [role="option"][aria-selected="true"] {
         background-color: #e6e6e6 !important; /* Slightly darker grey for selected option */
     }
 
@@ -310,7 +337,7 @@ st.markdown("""
     /* Forms */
     .stForm {
         padding: 25px;
-        background-color: #2e7d32; /* White background for forms */
+        background-color: #ffffff; /* White background for forms */
         border-radius: 12px;
         box-shadow: 0 4px 12px rgba(0,0,0,0.08); /* More prominent shadow */
         margin-bottom: 30px;
@@ -392,6 +419,37 @@ page = st.sidebar.radio(
 
 # --- Contenido Principal de la Aplicación ---
 
+# Inicializar st.session_state para las confirmaciones de eliminación
+if 'show_delete_user_confirm' not in st.session_state:
+    st.session_state.show_delete_user_confirm = False
+    st.session_state.user_to_delete_id = None
+if 'show_delete_registro_confirm' not in st.session_state:
+    st.session_state.show_delete_registro_confirm = False
+    st.session_state.registro_to_delete_id = None
+if 'show_delete_logro_confirm' not in st.session_state:
+    st.session_state.show_delete_logro_confirm = False
+    st.session_state.logro_to_delete_id = None
+if 'show_delete_ejercicio_confirm' not in st.session_state:
+    st.session_state.show_delete_ejercicio_confirm = False
+    st.session_state.ejercicio_to_delete_id = None
+if 'show_delete_conversacion_confirm' not in st.session_state:
+    st.session_state.show_delete_conversacion_confirm = False
+    st.session_state.conversacion_to_delete_id = None
+
+# Función para resetear las confirmaciones (útil para limpiar el estado)
+def reset_delete_confirmations():
+    st.session_state.show_delete_user_confirm = False
+    st.session_state.user_to_delete_id = None
+    st.session_state.show_delete_registro_confirm = False
+    st.session_state.registro_to_delete_id = None
+    st.session_state.show_delete_logro_confirm = False
+    st.session_state.logro_to_delete_id = None
+    st.session_state.show_delete_ejercicio_confirm = False
+    st.session_state.ejercicio_to_delete_id = None
+    st.session_state.show_delete_conversacion_confirm = False
+    st.session_state.conversacion_to_delete_id = None
+
+
 if page == "Dashboard":
     st.title("📊 Dashboard FitFlow")
     st.write("Bienvenido al panel de control integral de tu aplicación FitFlow. Aquí podrás ver un resumen y gestionar tus datos.")
@@ -449,7 +507,7 @@ if page == "Dashboard":
                 user_id = str(user_id) 
 
             if user_id:
-                volumen_total = make_api_request("GET", f"usuarios/{user_id}/volumen_total")
+                volumen_total = make_api_request("GET", f"usuarios/{user_id}/progreso/volumen_total") # RUTA CORREGIDA
                 if volumen_total is not None:
                     volumen_data.append({"Usuario": user.get("nombre", "Desconocido"), "Volumen": volumen_total})
         
@@ -493,18 +551,25 @@ elif page == "Usuarios":
                     }
                     response = make_api_request("POST", "usuarios", usuario_data)
                     if response:
-                        st.success(f"Usuario creado con ID: {response}")
-                        st.rerun() 
+                        st.success(f"Usuario creado con ID: {response.get('id', 'N/A')}") # Acceder a .get('id')
+                        st.rerun() # CAMBIO A st.rerun()
+                    else:
+                        st.error("Error al crear usuario.")
                 else:
                     st.warning("Nombre y Email son campos obligatorios.")
 
     with tab3:
         st.subheader("Actualizar o Eliminar Usuario")
         
-        # Obtener la lista de usuarios y procesar para las opciones del selectbox
+        # --- DEBUGGING CRÍTICO ---
+        print("\n--- DEBUG (Consola): Sección 'Actualizar/Eliminar Usuario' ---")
         users_from_api = make_api_request("GET", "usuarios")
+        print(f"DEBUG (Consola): Resultado de make_api_request('GET', 'usuarios'): {users_from_api}")
+
         usuario_options_dict = get_display_options(users_from_api, "usuarios")
-        
+        print(f"DEBUG (Consola): Diccionario de opciones generado (usuario_options_dict): {usuario_options_dict}")
+        # --- FIN DEBUGGING CRÍTICO ---
+
         if not usuario_options_dict: # If the dict is empty, no users are available
             st.info("No hay usuarios disponibles para actualizar o eliminar. Por favor, crea algunos primero.")
         else:
@@ -542,25 +607,44 @@ elif page == "Usuarios":
                                 response = make_api_request("PUT", f"usuarios/{selected_user_id}", update_data)
                                 if response:
                                     st.success(f"Usuario {selected_user_id} actualizado: {response.get('message', 'Éxito')}")
-                                    st.rerun() 
+                                    st.rerun() # CAMBIO A st.rerun()
+                                else:
+                                    st.error("Error al actualizar el usuario.")
                             else:
                                 st.warning("Nombre y Email son campos obligatorios para la actualización.")
 
+                        # Al hacer clic en eliminar, activamos la bandera de confirmación en session_state
                         if delete_submitted:
-                            confirm_delete = st.expander("Confirmar Eliminación")
-                            with confirm_delete:
-                                st.warning(f"¿Estás seguro de que quieres eliminar el usuario '{_format_selectbox_option(selected_user_id, usuario_options_dict, '')}'?")
-                                if st.button(f"Sí, Eliminar Usuario {_format_selectbox_option(selected_user_id, usuario_options_dict, '')}", key="confirm_delete_user_btn"):
-                                    response = make_api_request("DELETE", f"usuarios/{selected_user_id}")
-                                    if response:
-                                        st.success("Usuario eliminado exitosamente.")
-                                        st.rerun() 
-                                    else:
-                                        st.error("Error al eliminar el usuario.")
-                else:
+                            st.session_state.show_delete_user_confirm = True
+                            st.session_state.user_to_delete_id = selected_user_id
+                            st.rerun() # CAMBIO A st.rerun()
+                else: # Este else se alinea con 'if usuario_data:'
                     st.info("No se pudieron cargar los detalles del usuario seleccionado.")
-            else:
+            else: # Este else se alinea con 'if selected_user_id is not None:'
                 st.info("Por favor, selecciona un usuario para ver/modificar sus detalles.")
+
+        # --- Lógica de Confirmación de Eliminación (FUERA DEL FORMULARIO) ---
+        if st.session_state.show_delete_user_confirm and st.session_state.user_to_delete_id:
+            user_id_to_confirm = st.session_state.user_to_delete_id
+            user_display_name = _format_selectbox_option(user_id_to_confirm, usuario_options_dict, '')
+
+            st.error(f"¡ADVERTENCIA! ¿Estás ABSOLUTAMENTE seguro de que quieres eliminar el usuario '{user_display_name}'?")
+            st.warning("Esta acción es irreversible y eliminará todos los datos asociados al usuario.")
+            
+            col_confirm_yes, col_confirm_no = st.columns(2)
+            if col_confirm_yes.button(f"Sí, Eliminar Usuario {user_display_name}", key="confirm_delete_user_final_btn"):
+                response = make_api_request("DELETE", f"usuarios/{user_id_to_confirm}")
+                if response:
+                    st.success(f"Usuario {user_display_name} eliminado exitosamente.")
+                else:
+                    st.error(f"Error al eliminar el usuario {user_display_name}.")
+                reset_delete_confirmations() # Resetear banderas de confirmación
+                st.rerun() # CAMBIO A st.rerun()
+            
+            if col_confirm_no.button("No, Cancelar", key="cancel_delete_user_btn"):
+                st.info("Eliminación cancelada.")
+                reset_delete_confirmations() # Resetear banderas de confirmación
+                st.rerun() # CAMBIO A st.rerun()
 
 
 elif page == "Registros":
@@ -630,8 +714,8 @@ elif page == "Registros":
                     }
                     response = make_api_request("POST", "registros", registro_data)
                     if response:
-                        st.success(f"Registro creado con ID: {response}")
-                        st.rerun() 
+                        st.success(f"Registro creado con ID: {response.get('id', 'N/A')}")
+                        st.rerun() # CAMBIO A st.rerun()
                 else:
                     st.warning("Los campos 'Usuario', 'Fecha', 'Nombre del Ejercicio', 'Peso Levantado' y 'Repeticiones' son obligatorios.")
 
@@ -667,9 +751,13 @@ elif page == "Registros":
                     current_repeticiones = int(registro_data.get("repeticiones", 0))
                     current_notas = registro_data.get("notas", "")
                     
+                    # Capturamos el usuario_id y ejercicio_id originales
+                    original_usuario_id = registro_data.get("usuario_id")
+                    original_ejercicio_id = registro_data.get("ejercicio_id")
+
                     with st.form("update_delete_registro_form"):
-                        st.write(f"**Registro para Usuario ID:** {registro_data.get('usuario_id', 'N/A')}")
-                        st.write(f"**Ejercicio ID Asociado:** {registro_data.get('ejercicio_id', 'N/A')}")
+                        st.write(f"**Registro para Usuario ID:** {original_usuario_id if original_usuario_id else 'N/A'}")
+                        st.write(f"**Ejercicio ID Asociado:** {original_ejercicio_id if original_ejercicio_id else 'N/A'}")
 
                         new_ejercicio_nombre = st.text_input("Nombre del Ejercicio", value=current_ejercicio_nombre, key="update_registro_ejercicio")
                         new_peso_levantado = st.number_input("Peso Levantado (kg/lb)", value=current_peso_levantado, min_value=0.0, step=0.1, key="update_registro_peso")
@@ -684,95 +772,125 @@ elif page == "Registros":
 
                         if update_submitted:
                             update_data = {
+                                "usuario_id": original_usuario_id, # INCLUIDO EN LA ACTUALIZACIÓN
+                                "ejercicio_id": original_ejercicio_id, # INCLUIDO EN LA ACTUALIZACIÓN
                                 "ejercicio_nombre": new_ejercicio_nombre,
                                 "peso_levantado": new_peso_levantado,
                                 "repeticiones": new_repeticiones,
                                 "fecha_registro": datetime.combine(new_fecha_registro, datetime.min.time()).isoformat(), 
                                 "notas": new_notas if new_notas else None
                             }
+                            print(f"DEBUG (Consola): Datos de registro a enviar para actualización: {update_data}") # Nuevo debug
                             response = make_api_request("PUT", f"registros/{selected_registro_id}", update_data)
                             if response:
                                 st.success(f"Registro {selected_registro_id} actualizado.")
-                                st.rerun()
+                                st.rerun() # CAMBIO A st.rerun()
                             else:
                                 st.error("Error al actualizar el registro.")
 
                         if delete_submitted:
-                            confirm_delete = st.expander("Confirmar Eliminación")
-                            with confirm_delete:
-                                st.warning(f"¿Estás seguro de que quieres eliminar el registro '{_format_selectbox_option(selected_registro_id, registro_options_dict, '')}'?")
-                                if st.button(f"Sí, Eliminar Registro {_format_selectbox_option(selected_registro_id, registro_options_dict, '')}", key="confirm_delete_record_btn"):
-                                    response = make_api_request("DELETE", f"registros/{selected_registro_id}")
-                                    if response:
-                                        st.success("Registro eliminado exitosamente.")
-                                        st.rerun()
-                                    else:
-                                        st.error("Error al eliminar el registro.")
-                else:
+                            st.session_state.show_delete_registro_confirm = True
+                            st.session_state.registro_to_delete_id = selected_registro_id
+                            st.rerun() # CAMBIO A st.rerun()
+                else: # Este else se alinea con 'if registro_data:'
                     st.info("No se pudieron cargar los detalles del registro seleccionado.")
-            else:
+            else: # Este else se alinea con 'if selected_registro_id is not None:'
                 st.info("Por favor, selecciona un registro para ver/modificar sus detalles.")
-
-    with tab4:
-        st.subheader("Análisis de Registros")
-        
-        users_from_api_analysis = make_api_request("GET", "usuarios")
-        usuario_options_analysis_dict = get_display_options(users_from_api_analysis, "usuarios")
-        
-        selected_usuario_id_analysis = st.selectbox("Selecciona un Usuario para Análisis", 
-                                                    options=[None] + list(usuario_options_analysis_dict.keys()), 
-                                                    format_func=lambda x: _format_selectbox_option(x, usuario_options_analysis_dict, "--- Selecciona un usuario ---"), 
-                                                    index=0, 
-                                                    key="analysis_usuario_id")
-
-        if selected_usuario_id_analysis is not None:
-            st.markdown("---")
-            st.write("### Último Peso Levantado por Ejercicio")
-            ultimo_peso_data = make_api_request("GET", f"usuarios/{selected_usuario_id_analysis}/ultimo_peso_por_ejercicio")
-            if ultimo_peso_data:
-                display_entity_list("último peso por ejercicio", ultimo_peso_data)
-            else:
-                st.info("No se encontró información de último peso por ejercicio para este usuario.")
-
-            st.markdown("---")
-            st.write("### Mejor Marca por Ejercicio")
-            registros_del_usuario = make_api_request("GET", f"registros/usuario/{selected_usuario_id_analysis}")
             
-            ejercicio_nombres = []
-            if registros_del_usuario:
-                ejercicio_nombres = sorted(list(set([e.get('ejercicio_nombre') for e in registros_del_usuario if e.get('ejercicio_nombre')])))
+            # --- Lógica de Confirmación de Eliminación (FUERA DEL FORMULARIO) ---
+            if st.session_state.show_delete_registro_confirm and st.session_state.registro_to_delete_id:
+                registro_id_to_confirm = st.session_state.registro_to_delete_id
+                registro_options_dict = get_display_options(records_from_api, "registros") # Recargar para asegurar que esté actualizado
+                registro_display_name = _format_selectbox_option(registro_id_to_confirm, registro_options_dict, '')
+
+                st.error(f"¡ADVERTENCIA! ¿Estás ABSOLUTAMENTE seguro de que quieres eliminar el registro '{registro_display_name}'?")
+                st.warning("Esta acción es irreversible.")
+                
+                col_confirm_yes, col_confirm_no = st.columns(2)
+                if col_confirm_yes.button(f"Sí, Eliminar Registro {registro_display_name}", key="confirm_delete_registro_final_btn"):
+                    response = make_api_request("DELETE", f"registros/{registro_id_to_confirm}")
+                    if response:
+                        st.success(f"Registro {registro_display_name} eliminado exitosamente.")
+                    else:
+                        st.error(f"Error al eliminar el registro {registro_display_name}.")
+                    reset_delete_confirmations()
+                    st.rerun() # CAMBIO A st.rerun()
+                
+                if col_confirm_no.button("No, Cancelar", key="cancel_delete_registro_btn"):
+                    st.info("Eliminación cancelada.")
+                    reset_delete_confirmations()
+                    st.rerun() # CAMBIO A st.rerun()
+
+
+        with tab4:
+            st.subheader("Análisis de Registros")
             
-            selected_ejercicio_for_best_mark = st.selectbox("Selecciona un Ejercicio para ver la Mejor Marca", 
-                                                            options=[None] + ejercicio_nombres, 
-                                                            format_func=lambda x: x if x else "--- Selecciona un ejercicio ---",
-                                                            index=0, 
-                                                            key="select_best_mark_exercise")
+            users_from_api_analysis = make_api_request("GET", "usuarios")
+            usuario_options_analysis_dict = get_display_options(users_from_api_analysis, "usuarios")
             
-            if selected_ejercicio_for_best_mark is not None:
-                mejor_marca_data = make_api_request("GET", f"usuarios/{selected_usuario_id_analysis}/mejor_marca/{selected_ejercicio_for_best_mark}")
-                if mejor_marca_data:
-                    st.json(mejor_marca_data)
+            selected_usuario_id_analysis = st.selectbox("Selecciona un Usuario para Análisis", 
+                                                        options=[None] + list(usuario_options_analysis_dict.keys()), 
+                                                        format_func=lambda x: _format_selectbox_option(x, usuario_options_analysis_dict, "--- Selecciona un usuario ---"), 
+                                                        index=0, 
+                                                        key="analysis_usuario_id")
+
+            if selected_usuario_id_analysis is not None:
+                st.markdown("---")
+                st.write("### Último Peso Levantado por Ejercicio")
+                ultimo_peso_data = make_api_request("GET", f"usuarios/{selected_usuario_id_analysis}/progreso") # Ruta corregida
+                if ultimo_peso_data:
+                    display_entity_list("último peso por ejercicio", ultimo_peso_data)
                 else:
-                    st.info("No se encontró la mejor marca para este ejercicio y usuario.")
-            else:
-                st.info("Por favor, selecciona un ejercicio para analizar sus mejores marcas.")
-            
-            st.markdown("---")
-            st.write("### Frecuencia Semanal de Entrenamiento")
-            frecuencia_semanal_data = make_api_request("GET", f"usuarios/{selected_usuario_id_analysis}/frecuencia_semanal")
-            if frecuencia_semanal_data:
-                import pandas as pd
-                df_frecuencia = pd.DataFrame(frecuencia_semanal_data)
-                if not df_frecuencia.empty:
-                    df_frecuencia['Periodo'] = df_frecuencia['_id'].apply(lambda x: f"Año {x['año']}, Semana {x['semana']}")
-                    st.line_chart(df_frecuencia, x="Periodo", y="dias")
-                else:
-                    st.info("No hay datos de frecuencia semanal para mostrar.")
-            else:
-                st.info("No se encontró información de frecuencia semanal para este usuario.")
+                    st.info("No se encontró información de último peso por ejercicio para este usuario.")
 
-        else:
-            st.info("Por favor, selecciona un usuario para ver sus análisis de registros.")
+                st.markdown("---")
+                st.write("### Mejor Marca por Ejercicio")
+                registros_del_usuario = make_api_request("GET", f"registros/usuario/{selected_usuario_id_analysis}")
+                
+                ejercicio_nombres = []
+                if registros_del_usuario:
+                    ejercicio_nombres = sorted(list(set([e.get('ejercicio_nombre') for e in registros_del_usuario if e.get('ejercicio_nombre')])))
+                
+                selected_ejercicio_for_best_mark = st.selectbox("Selecciona un Ejercicio para ver la Mejor Marca", 
+                                                                options=[None] + ejercicio_nombres, 
+                                                                format_func=lambda x: x if x else "--- Selecciona un ejercicio ---",
+                                                                index=0, 
+                                                                key="select_best_mark_exercise")
+                
+                if selected_ejercicio_for_best_mark is not None:
+                    mejor_marca_data = make_api_request("GET", f"usuarios/{selected_usuario_id_analysis}/progreso/{selected_ejercicio_for_best_mark}/mejor_marca") # Ruta corregida
+                    if mejor_marca_data:
+                        st.json(mejor_marca_data)
+                    else:
+                        st.info("No se encontró la mejor marca para este ejercicio y usuario.")
+                else:
+                    st.info("Por favor, selecciona un ejercicio para analizar sus mejores marcas.")
+                
+                st.markdown("---")
+                st.write("### Frecuencia Semanal de Entrenamiento")
+                frecuencia_semanal_data = make_api_request("GET", f"usuarios/{selected_usuario_id_analysis}/progreso/frecuencia_semanal") # Ruta corregida
+                if frecuencia_semanal_data:
+                    import pandas as pd
+                    df_frecuencia = pd.DataFrame(frecuencia_semanal_data)
+                    if not df_frecuencia.empty:
+                        # CORRECCIÓN: Acceder directamente a 'año' y 'semana' ya que son campos de nivel superior
+                        df_frecuencia['Periodo'] = df_frecuencia.apply(lambda row: f"Año {row['año']}, Semana {row['semana']}", axis=1)
+                        st.line_chart(df_frecuencia, x="Periodo", y="dias")
+                    else:
+                        st.info("No hay datos de frecuencia semanal para mostrar.")
+                else:
+                    st.info("No se encontró información de frecuencia semanal para este usuario.")
+
+                st.markdown("---")
+                st.write("### Volumen Total de Entrenamiento")
+                volumen_total_data = make_api_request("GET", f"usuarios/{selected_usuario_id_analysis}/progreso/volumen_total") # Ruta corregida
+                if volumen_total_data is not None:
+                    st.success(f"Volumen total para el usuario: **{volumen_total_data}**")
+                else:
+                    st.info("No se encontró información de volumen total para este usuario.")
+
+            else:
+                st.info("Por favor, selecciona un usuario para ver sus análisis de registros.")
 
 
 elif page == "Logros":
@@ -828,21 +946,33 @@ elif page == "Logros":
 
             submitted = st.form_submit_button("Crear Logro")
             if submitted:
-                if selected_usuario_id_logro and descripcion and valor and fecha_logro:
+                # *** INICIO DE LA CORRECCIÓN ESPECÍFICA PARA EL ERROR 422 ***
+                # Validar que se haya seleccionado un usuario antes de construir la data y enviar la petición
+                if not selected_usuario_id_logro: 
+                    st.error("Error: Por favor, selecciona un usuario para asociar el logro. Este campo es obligatorio.")
+                    st.stop() # Detiene la ejecución aquí para que el mensaje sea visible y no se envíe la petición errónea
+
+                if descripcion and valor and fecha_logro:
                     logro_data = {
-                        "usuario_id": selected_usuario_id_logro,
+                        "usuario_id": selected_usuario_id_logro, # Ya se ha validado que no es None/vacío
                         "ejercicio_id": selected_ejercicio_id_logro if selected_ejercicio_id_logro else None,
                         "descripcion": descripcion,
                         "valor": valor,
                         "fecha_logro": datetime.combine(fecha_logro, datetime.min.time()).isoformat(), 
                         "tipo": tipo if tipo else None
                     }
+                    # Mensaje de depuración extra para ver los datos antes de enviar
+                    print(f"DEBUG (Consola): Datos de logro a enviar: {logro_data}") 
+                    
                     response = make_api_request("POST", "logros", logro_data)
                     if response:
-                        st.success(f"Logro creado con ID: {response}")
-                        st.rerun()
+                        st.success(f"Logro creado con ID: {response.get('id', 'N/A')}")
+                        st.rerun() # CAMBIO A st.rerun()
+                    else:
+                        st.error("Error al crear logro.")
                 else:
-                    st.warning("Usuario, Descripción, Valor y Fecha del Logro son campos obligatorios.")
+                    st.warning("Descripción, Valor y Fecha del Logro son campos obligatorios.")
+                # *** FIN DE LA CORRECCIÓN ESPECÍFICA PARA EL ERROR 422 ***
 
     with tab3:
         st.subheader("Actualizar o Eliminar Logro")
@@ -894,30 +1024,50 @@ elif page == "Logros":
                                 "descripcion": new_descripcion,
                                 "valor": new_valor,
                                 "fecha_logro": datetime.combine(new_fecha_logro, datetime.min.time()).isoformat(), 
-                                "tipo": new_tipo if new_tipo else None
+                                "tipo": new_tipo if new_tipo else None,
+                                "usuario_id": current_usuario_id, # INCLUIDO EN LA ACTUALIZACIÓN
+                                "ejercicio_id": current_ejercicio_id # INCLUIDO EN LA ACTUALIZACIÓN
                             }
+                            print(f"DEBUG (Consola): Datos de logro a enviar para actualización: {update_data}") # Nuevo debug
                             response = make_api_request("PUT", f"logros/{selected_logro_id}", update_data)
                             if response:
                                 st.success(f"Logro {selected_logro_id} actualizado.")
-                                st.rerun()
+                                st.rerun() # CAMBIO A st.rerun()
                             else:
                                 st.error("Error al actualizar el logro.")
 
                         if delete_submitted:
-                            confirm_delete = st.expander("Confirmar Eliminación")
-                            with confirm_delete:
-                                st.warning(f"¿Estás seguro de que quieres eliminar el logro '{_format_selectbox_option(selected_logro_id, logro_options_dict, '')}'?")
-                                if st.button(f"Sí, Eliminar Logro {_format_selectbox_option(selected_logro_id, logro_options_dict, '')}", key="confirm_delete_achievement_btn"):
-                                    response = make_api_request("DELETE", f"logros/{selected_logro_id}")
-                                    if response:
-                                        st.success("Logro eliminado exitosamente.")
-                                        st.rerun()
-                                    else:
-                                        st.error("Error al eliminar el logro.")
-                else:
+                            st.session_state.show_delete_logro_confirm = True
+                            st.session_state.logro_to_delete_id = selected_logro_id
+                            st.rerun() # CAMBIO A st.rerun()
+                else: # ESTE ES EL 'else' que se alinea con 'if logro_data:'
                     st.info("No se pudieron cargar los detalles del logro seleccionado.")
-            else:
+            else: # Este else se alinea con 'if selected_logro_id is not None:'
                 st.info("Por favor, selecciona un logro para ver/modificar sus detalles.")
+
+        # --- Lógica de Confirmación de Eliminación (FUERA DEL FORMULARIO) ---
+        if st.session_state.show_delete_logro_confirm and st.session_state.logro_to_delete_id:
+            logro_id_to_confirm = st.session_state.logro_to_delete_id
+            logro_options_dict = get_display_options(logros_from_api, "logros") # Recargar para asegurar que esté actualizado
+            logro_display_name = _format_selectbox_option(logro_id_to_confirm, logro_options_dict, '')
+
+            st.error(f"¡ADVERTENCIA! ¿Estás ABSOLUTAMENTE seguro de que quieres eliminar el logro '{logro_display_name}'?")
+            st.warning("Esta acción es irreversible.")
+            
+            col_confirm_yes, col_confirm_no = st.columns(2)
+            if col_confirm_yes.button(f"Sí, Eliminar Logro {logro_display_name}", key="confirm_delete_logro_final_btn"):
+                response = make_api_request("DELETE", f"logros/{logro_id_to_confirm}")
+                if response:
+                    st.success(f"Logro {logro_display_name} eliminado exitosamente.")
+                else:
+                    st.error(f"Error al eliminar el logro {logro_display_name}.")
+                reset_delete_confirmations()
+                st.rerun() # CAMBIO A st.rerun()
+            
+            if col_confirm_no.button("No, Cancelar", key="cancel_delete_logro_btn"):
+                st.info("Eliminación cancelada.")
+                reset_delete_confirmations()
+                st.rerun() # CAMBIO A st.rerun()
 
 
 elif page == "Ejercicios":
@@ -947,8 +1097,8 @@ elif page == "Ejercicios":
                     }
                     response = make_api_request("POST", "ejercicios", ejercicio_data)
                     if response:
-                        st.success(f"Ejercicio creado con ID: {response}")
-                        st.rerun()
+                        st.success(f"Ejercicio creado con ID: {response.get('id', 'N/A')}")
+                        st.rerun() # CAMBIO A st.rerun()
                 else:
                     st.warning("El Nombre del Ejercicio es un campo obligatorio.")
 
@@ -993,25 +1143,42 @@ elif page == "Ejercicios":
                             response = make_api_request("PUT", f"ejercicios/{selected_ejercicio_id}", update_data)
                             if response:
                                 st.success(f"Ejercicio {selected_ejercicio_id} actualizado: {response.get('message', 'Éxito')}")
-                                st.rerun()
+                                st.rerun() # CAMBIO A st.rerun()
                             else:
                                 st.error("Error al actualizar el ejercicio.")
 
                         if delete_submitted:
-                            confirm_delete = st.expander("Confirmar Eliminación")
-                            with confirm_delete:
-                                st.warning(f"¿Estás seguro de que quieres eliminar el ejercicio '{_format_selectbox_option(selected_ejercicio_id, ejercicio_options_dict, '')}'?")
-                                if st.button(f"Sí, Eliminar Ejercicio {_format_selectbox_option(selected_ejercicio_id, ejercicio_options_dict, '')}", key="confirm_delete_exercise_btn"):
-                                    response = make_api_request("DELETE", f"ejercicios/{selected_ejercicio_id}")
-                                    if response:
-                                        st.success("Ejercicio eliminado exitosamente.")
-                                        st.rerun()
-                                    else:
-                                        st.error("Error al eliminar el ejercicio.")
-                else:
+                            st.session_state.show_delete_ejercicio_confirm = True
+                            st.session_state.ejercicio_to_delete_id = selected_ejercicio_id
+                            st.rerun() # CAMBIO A st.rerun()
+                else: # Este else se alinea con 'if ejercicio_data:'
                     st.info("No se pudieron cargar los detalles del ejercicio seleccionado.")
-            else:
+            else: # Este else se alinea con 'if selected_ejercicio_id is not None:'
                 st.info("Por favor, selecciona un ejercicio para ver/modificar sus detalles.")
+
+        # --- Lógica de Confirmación de Eliminación (FUERA DEL FORMULARIO) ---
+        if st.session_state.show_delete_ejercicio_confirm and st.session_state.ejercicio_to_delete_id:
+            ejercicio_id_to_confirm = st.session_state.ejercicio_to_delete_id
+            ejercicio_options_dict = get_display_options(exercises_from_api, "ejercicios") # Recargar para asegurar que esté actualizado
+            ejercicio_display_name = _format_selectbox_option(ejercicio_id_to_confirm, ejercicio_options_dict, '')
+
+            st.error(f"¡ADVERTENCIA! ¿Estás ABSOLUTAMENTE seguro de que quieres eliminar el ejercicio '{ejercicio_display_name}'?")
+            st.warning("Esta acción es irreversible.")
+            
+            col_confirm_yes, col_confirm_no = st.columns(2)
+            if col_confirm_yes.button(f"Sí, Eliminar Ejercicio {ejercicio_display_name}", key="confirm_delete_ejercicio_final_btn"):
+                response = make_api_request("DELETE", f"ejercicios/{ejercicio_id_to_confirm}")
+                if response:
+                    st.success(f"Ejercicio {ejercicio_display_name} eliminado exitosamente.")
+                else:
+                    st.error(f"Error al eliminar el ejercicio {ejercicio_display_name}.")
+                reset_delete_confirmations()
+                st.rerun() # CAMBIO A st.rerun()
+            
+            if col_confirm_no.button("No, Cancelar", key="cancel_delete_ejercicio_btn"):
+                st.info("Eliminación cancelada.")
+                reset_delete_confirmations()
+                st.rerun() # CAMBIO A st.rerun()
 
 
 elif page == "Conversaciones":
@@ -1065,7 +1232,12 @@ elif page == "Conversaciones":
                     "rol": "user",
                     "tema": "general" 
                 }
-                make_api_request("POST", "conversaciones", create_user_msg_data)
+                response_post_chat = make_api_request("POST", "conversaciones", create_user_msg_data)
+                if response_post_chat:
+                    print(f"DEBUG (Consola): Mensaje de usuario guardado con ID: {response_post_chat.get('id', 'N/A')}")
+                else:
+                    print("ERROR (Consola): No se pudo guardar el mensaje del usuario.")
+
 
                 with st.chat_message("assistant"):
                     with st.spinner("Pensando..."):
@@ -1079,7 +1251,11 @@ elif page == "Conversaciones":
                             "rol": "assistant",
                             "tema": "general" 
                         }
-                        make_api_request("POST", "conversaciones", create_bot_msg_data)
+                        response_post_bot = make_api_request("POST", "conversaciones", create_bot_msg_data)
+                        if response_post_bot:
+                            print(f"DEBUG (Consola): Mensaje de bot guardado con ID: {response_post_bot.get('id', 'N/A')}")
+                        else:
+                            print("ERROR (Consola): No se pudo guardar el mensaje del bot.")
 
                 st.session_state[f'chat_history_{selected_chat_user_id}'].append({"role": "assistant", "content": response_from_llm})
         else:
@@ -1110,17 +1286,41 @@ elif page == "Conversaciones":
                 conv_data = make_api_request("GET", f"conversaciones/{selected_conv_id}")
                 if conv_data:
                     st.json(conv_data)
-                    if st.button(f"Eliminar Conversación {selected_conv_id}", key="delete_specific_conv_btn"):
-                        response = make_api_request("DELETE", f"conversaciones/{selected_conv_id}")
-                        if response:
-                            st.success("Conversación eliminada exitosamente.")
-                            st.rerun()
-                        else:
-                            st.error("Error al eliminar la conversación.")
-                else:
+                    # Aquí la eliminación está separada, no dentro de un formulario grande
+                    if st.button(f"Eliminar Conversación {selected_conv_id}", key="delete_specific_conv_btn_initial"):
+                        st.session_state.show_delete_conversacion_confirm = True
+                        st.session_state.conversacion_to_delete_id = selected_conv_id
+                        st.rerun() # CAMBIO A st.rerun()
+                else: # Este else se alinea con 'if conv_data:'
                     st.info("No se pudieron cargar los detalles de la conversación seleccionada.")
-            else:
+            else: # Este else se alinea con 'if selected_conv_id is not None:'
                 st.info("Por favor, selecciona una conversación para ver su detalle.")
+        
+        # --- Lógica de Confirmación de Eliminación (FUERA DEL FORMULARIO) ---
+        if st.session_state.show_delete_conversacion_confirm and st.session_state.conversacion_to_delete_id:
+            conv_id_to_confirm = st.session_state.conversacion_to_delete_id
+            conversations_from_api = make_api_request("GET", "conversaciones") # Recargar para asegurar que esté actualizado
+            conv_options_dict = get_display_options(conversations_from_api, "conversaciones") # Recargar dict
+            conv_display_name = _format_selectbox_option(conv_id_to_confirm, conv_options_dict, '')
+
+            st.error(f"¡ADVERTENCIA! ¿Estás ABSOLUTAMENTE seguro de que quieres eliminar la conversación '{conv_display_name}'?")
+            st.warning("Esta acción es irreversible.")
+            
+            col_confirm_yes, col_confirm_no = st.columns(2)
+            if col_confirm_yes.button(f"Sí, Eliminar Conversación {conv_display_name}", key="confirm_delete_conversacion_final_btn"):
+                response = make_api_request("DELETE", f"conversaciones/{conv_id_to_confirm}")
+                if response:
+                    st.success(f"Conversación {conv_display_name} eliminada exitosamente.")
+                else:
+                    st.error(f"Error al eliminar la conversación {conv_display_name}.")
+                reset_delete_confirmations()
+                st.rerun() # CAMBIO A st.rerun()
+            
+            if col_confirm_no.button("No, Cancelar", key="cancel_delete_conversacion_btn"):
+                st.info("Eliminación cancelada.")
+                reset_delete_confirmations()
+                st.rerun() # CAMBIO A st.rerun()
+
 
     with tab3:
         st.subheader("Análisis de Conversaciones por Usuario")

@@ -1,179 +1,231 @@
 from bson import ObjectId
-from fastapi import HTTPException
-from models.conversacion import conversaciones_collection
+from datetime import datetime
+from typing import List, Optional, Dict, Any
+from motor.motor_asyncio import AsyncIOMotorDatabase
 
+# --- Función auxiliar para convertir ObjectId a str de forma recursiva ---
+def _convert_id_to_str(document: Any) -> Any:
+    """
+    Convierte ObjectId en str dentro de un diccionario o lista de diccionarios.
+    Útil para la serialización de respuestas de la API.
+    """
+    if isinstance(document, dict):
+        return {
+            k: str(v) if isinstance(v, ObjectId) else _convert_id_to_str(v)
+            for k, v in document.items()
+        }
+    elif isinstance(document, list):
+        return [_convert_id_to_str(elem) for elem in document]
+    elif isinstance(document, ObjectId):
+        return str(document)
+    return document
 
-def get_conversacion_by_id(conversacion_id: str):
+# --- Funciones CRUD para Conversaciones ---
+
+async def get_conversacion_by_id(db: AsyncIOMotorDatabase, conversacion_id: str) -> Optional[Dict[str, Any]]:
+    """
+    Obtiene una conversación por su ID de la base de datos.
+    """
     try:
-        # Check if the ID is valid
         if not ObjectId.is_valid(conversacion_id):
-            raise HTTPException(status_code=400, detail="ID de conversación inválido")
-        
-        # Search for the conversacion
-        conversacion = conversaciones_collection.find_one({"_id": ObjectId(conversacion_id)})
-        if conversacion is None:
-            raise HTTPException(status_code=404, detail="Conversación no encontrada")
-        
-        return conversacion
-    except HTTPException as e:
-        raise e  # Re-raise the custom exception
+            print(f"ERROR (Controller): ID de conversación inválido: {conversacion_id}")
+            return None
+
+        conversacion = await db.conversaciones.find_one({"_id": ObjectId(conversacion_id)})
+        if conversacion:
+            processed_conversacion = _convert_id_to_str(conversacion)
+            print(f"DEBUG (Controller): Conversación recuperada por ID ({conversacion_id}): {processed_conversacion}")
+            return processed_conversacion
+        print(f"DEBUG (Controller): Conversación no encontrada para ID: {conversacion_id}")
+        return None
     except Exception as e:
-        raise HTTPException(status_code=500, detail="Error al recuperar la conversación.")
+        print(f"ERROR (Controller): Error al recuperar la conversación '{conversacion_id}': {e}")
+        return None
 
 
-def get_all_conversaciones():
+async def get_all_conversaciones(db: AsyncIOMotorDatabase) -> List[Dict[str, Any]]:
+    """
+    Obtiene todas las conversaciones de la base de datos.
+    """
     try:
-        # Retrieve all conversations
-        conversaciones = list(conversaciones_collection.find())
-        if not conversaciones:
-            raise HTTPException(status_code=404, detail="No se encontraron conversaciones")
+        conversaciones = await db.conversaciones.find().to_list(None)
+        processed_conversaciones = [_convert_id_to_str(c) for c in conversaciones]
+        if not processed_conversaciones:
+            print("DEBUG (Controller): No se encontraron conversaciones.")
         
-        return conversaciones
-    except HTTPException as e:
-        raise e  # Re-raise the custom exception
+        print(f"DEBUG (Controller): Conversaciones recuperadas: {processed_conversaciones}")
+        return processed_conversaciones
     except Exception as e:
-        raise HTTPException(status_code=500, detail="Error al recuperar las conversaciones.")
+        print(f"ERROR (Controller): Error al recuperar las conversaciones: {e}")
+        return []
 
 
-def create_conversacion(conversacion_data: dict):
+async def create_conversacion(db: AsyncIOMotorDatabase, conversacion_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """
+    Crea una nueva conversación en la base de datos.
+    """
     try:
-        # Validate required fields
-        if not conversacion_data.get("usuario_id") or not conversacion_data.get("mensaje"):
-            raise HTTPException(status_code=400, detail="Datos de conversación incompletos")
-        
-        # Insert the new conversation
-        result = conversaciones_collection.insert_one(conversacion_data)
+        result = await db.conversaciones.insert_one(conversacion_data)
         
         if not result.acknowledged:
-            raise HTTPException(status_code=500, detail="Error al crear la conversación")
+            print("ERROR (Controller): Fallo en el reconocimiento de la inserción de conversación.")
+            return None
         
-        return str(result.inserted_id)
-    except HTTPException as e:
-        raise e # Re-raise the custom exception
+        created_conversacion = await db.conversaciones.find_one({"_id": result.inserted_id})
+        if created_conversacion:
+            processed_conversacion = _convert_id_to_str(created_conversacion)
+            print(f"DEBUG (Controller): Conversación creada: {processed_conversacion}")
+            return processed_conversacion
+        print("ERROR (Controller): No se pudo recuperar la conversación recién creada.")
+        return None
     except Exception as e:
-        raise HTTPException(status_code=500, detail="Error al crear la conversación.")
+        print(f"ERROR (Controller): Error al crear la conversación: {e}")
+        return None
 
 
-def update_conversacion(conversacion_id: str, conversacion_data: dict):
+async def update_conversacion(db: AsyncIOMotorDatabase, conversacion_id: str, conversacion_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """
+    Actualiza una conversación existente en la base de datos.
+    """
     try:
-        # Validate the conversation ID
         if not ObjectId.is_valid(conversacion_id):
-            raise HTTPException(status_code=400, detail="ID de conversación inválido")
+            print(f"ERROR (Controller): ID de conversación inválido: {conversacion_id}")
+            return None
+
+        object_id = ObjectId(conversacion_id)
         
-        # Validate required fields
-        if not conversacion_data:
-            raise HTTPException(status_code=400, detail="Datos de conversación incompletos")
-        
-        # Update the conversation
-        result = conversaciones_collection.update_one(
-            {"_id": ObjectId(conversacion_id)},
+        conversacion_data.pop('id', None)
+        conversacion_data.pop('_id', None)
+
+        await db.conversaciones.update_one(
+            {"_id": object_id},
             {"$set": conversacion_data}
         )
         
-        if result.modified_count == 0:
-            raise HTTPException(status_code=404, detail="Conversación no encontrada o no se realizaron cambios")
-        
-        return str(conversacion_id)
-    except HTTPException as e:
-        raise e  # Re-raise the custom exception
+        updated_conversacion = await db.conversaciones.find_one({"_id": object_id})
+        if updated_conversacion:
+            processed_conversacion = _convert_id_to_str(updated_conversacion)
+            print(f"DEBUG (Controller): Conversación actualizada: {processed_conversacion}")
+            return processed_conversacion
+        print(f"DEBUG (Controller): Conversación no encontrada o no se pudo recuperar después de la actualización para ID: {conversacion_id}")
+        return None
     except Exception as e:
-        raise HTTPException(status_code=500, detail="Error al actualizar la conversación.")
+        print(f"ERROR (Controller): Error al actualizar la conversación '{conversacion_id}': {e}")
+        return None
 
 
-def delete_conversacion(conversacion_id: str):
+async def delete_conversacion(db: AsyncIOMotorDatabase, conversacion_id: str) -> bool:
+    """
+    Elimina una conversación por su ID de la base de datos.
+    """
     try:
-        # Check if the ID is valid
         if not ObjectId.is_valid(conversacion_id):
-            raise HTTPException(status_code=400, detail="Invalid conversacion ID")
+            print(f"ERROR (Controller): ID de conversación inválido: {conversacion_id}")
+            return False
         
-        result = conversaciones_collection.delete_one({"_id": ObjectId(conversacion_id)})
-        if result.deleted_count > 0:
-            return True
-        raise HTTPException(status_code=404, detail="conversacion not found")
-    except HTTPException as e:
-        raise e  # Re-raise the custom exception
+        result = await db.conversaciones.delete_one({"_id": ObjectId(conversacion_id)})
+        
+        if result.deleted_count == 0:
+            print(f"DEBUG (Controller): Conversación no encontrada para eliminar con ID: {conversacion_id}")
+            return False
+        
+        print(f"DEBUG (Controller): Conversación eliminada ({conversacion_id}): True")
+        return True
     except Exception as e:
-        raise HTTPException(status_code=500, detail="Error deleting the conversacion")
+        print(f"ERROR (Controller): Error al eliminar la conversación '{conversacion_id}': {e}")
+        return False
 
 
-def get_conversaciones_by_usuario(usuario_id: str):
+# --- Funciones de Consulta Específicas para Chatbot ---
+
+async def get_conversaciones_by_usuario(db: AsyncIOMotorDatabase, usuario_id: str) -> List[Dict[str, Any]]:
+    """
+    Busca conversaciones de un usuario específico.
+    """
     try:
-        # Check if the user ID is valid
-        if not ObjectId.is_valid(usuario_id):
-            raise HTTPException(status_code=400, detail="ID de usuario inválido")
+        query_user_id = usuario_id
+
+        conversaciones = await db.conversaciones.find({"usuario_id": query_user_id}).to_list(None)
         
-        # Retrieve conversations for the user
-        conversaciones = list(conversaciones_collection.find({"usuario_id": ObjectId(usuario_id)}))
+        processed_conversaciones = [_convert_id_to_str(c) for c in conversaciones]
+        if not processed_conversaciones:
+            print(f"DEBUG (Controller): No se encontraron conversaciones para el usuario {usuario_id}")
         
-        if not conversaciones:
-            raise HTTPException(status_code=404, detail="No se encontraron conversaciones para este usuario")
-        
-        return conversaciones
-    except HTTPException as e:
-        raise e # Re-raise the custom exception
+        print(f"DEBUG (Controller): Conversaciones para usuario {usuario_id}: {processed_conversaciones}")
+        return processed_conversaciones
     except Exception as e:
-        raise HTTPException(status_code=500, detail="Error al recuperar las conversaciones del usuario.")
+        print(f"ERROR (Controller): Error al recuperar las conversaciones del usuario '{usuario_id}': {e}")
+        return []
 
 
-def get_ultimos_mensajes(usuario_id, n):
+async def get_ultimos_mensajes(db: AsyncIOMotorDatabase, usuario_id: str, n: int) -> List[Dict[str, Any]]:
+    """
+    Obtiene los últimos n mensajes de un usuario.
+    """
     try:
-        # Check if the user ID is valid
-        if not ObjectId.is_valid(usuario_id):
-            raise HTTPException(status_code=400, detail="ID de usuario inválido")
+        query_user_id = usuario_id
+
+        mensajes = await db.conversaciones.find({"usuario_id": query_user_id}).sort("fecha", -1).limit(n).to_list(None)
         
-        # Retrieve the last n messages for the user
-        mensajes = list(conversaciones_collection.find({"usuario_id": ObjectId(usuario_id)}).sort("fecha", -1).limit(n))
+        processed_mensajes = [_convert_id_to_str(m) for m in mensajes]
+        if not processed_mensajes:
+            print(f"DEBUG (Controller): No se encontraron mensajes recientes para el usuario {usuario_id}")
         
-        if not mensajes:
-            raise HTTPException(status_code=404, detail="No se encontraron mensajes recientes para este usuario")
-        
-        return mensajes
-    except HTTPException as e:
-        raise e  # Re-raise the custom exception
+        print(f"DEBUG (Controller): Últimos {n} mensajes para usuario {usuario_id}: {processed_mensajes}")
+        return processed_mensajes
     except Exception as e:
-        raise HTTPException(status_code=500, detail="Error al recuperar los últimos mensajes del usuario.")
+        print(f"ERROR (Controller): Error al recuperar los últimos mensajes del usuario '{usuario_id}': {e}")
+        return []
 
 
-def get_mensajes_por_tema(usuario_id, tema):
+async def get_mensajes_por_tema(db: AsyncIOMotorDatabase, usuario_id: str, tema: str) -> List[Dict[str, Any]]:
+    """
+    Obtiene mensajes relacionados con un tema específico para un usuario.
+    """
     try:
-        # Check if the user ID is valid
-        if not ObjectId.is_valid(usuario_id):
-            raise HTTPException(status_code=400, detail="ID de usuario inválido")
-        
-        # Retrieve messages related to a specific topic for the user
-        mensajes = list(conversaciones_collection.find({
-            "usuario_id": ObjectId(usuario_id),
+        query_user_id = usuario_id
+
+        mensajes = await db.conversaciones.find({
+            "usuario_id": query_user_id,
             "tema": tema
-        }))
+        }).to_list(None)
         
-        if not mensajes:
-            raise HTTPException(status_code=404, detail="No se encontraron mensajes para este tema")
+        processed_mensajes = [_convert_id_to_str(m) for m in mensajes]
+        if not processed_mensajes:
+            print(f"DEBUG (Controller): No se encontraron mensajes sobre el tema '{tema}' para el usuario {usuario_id}")
         
-        return mensajes
-    except HTTPException as e:
-        raise e  # Re-raise the custom exception
+        print(f"DEBUG (Controller): Mensajes por tema '{tema}' para usuario {usuario_id}: {processed_mensajes}")
+        return processed_mensajes
     except Exception as e:
-        raise HTTPException(status_code=500, detail="Error al recuperar los mensajes por tema.")
+        print(f"ERROR (Controller): Error al recuperar los mensajes por tema para el usuario '{usuario_id}': {e}")
+        return []
 
 
-def analizar_estado_animo(usuario_id):
+async def analizar_estado_animo(db: AsyncIOMotorDatabase, usuario_id: str) -> Dict[str, str]:
+    """
+    Analiza el estado de ánimo de un usuario basado en sus conversaciones.
+    (Esta es una lógica de PLACEHOLDER; necesitarías integrar un modelo de PNL real aquí).
+    """
     try:
-        # Check if the user ID is valid
-        if not ObjectId.is_valid(usuario_id):
-            raise HTTPException(status_code=400, detail="ID de usuario inválido")
+        query_user_id = usuario_id
+
+        conversaciones = await db.conversaciones.find({"usuario_id": query_user_id}).to_list(None)
         
-        # Retrieve conversations for the user
-        conversaciones = list(conversaciones_collection.find({"usuario_id": ObjectId(usuario_id)}))
+        # No es necesario convertir aquí ya que el resultado final es un dict de strings,
+        # pero si la lógica del análisis dependiera de atributos ObjectId, se haría aquí.
         
         if not conversaciones:
-            raise HTTPException(status_code=404, detail="No se encontraron conversaciones para este usuario")
+            print(f"DEBUG (Controller): No se encontraron conversaciones para el usuario {usuario_id} para analizar estado de ánimo.")
+            return {"estado_animo": "No disponible"}
         
-        # Analyze the mood based on the messages (this is a placeholder for actual analysis logic)
-        estado_animo = "Neutral"  # Placeholder logic
-        
+        estado_animo = "Neutral"
+        if any("triste" in msg.get("mensaje", "").lower() for msg in conversaciones):
+            estado_animo = "Negativo"
+        elif any("feliz" in msg.get("mensaje", "").lower() for msg in conversaciones):
+            estado_animo = "Positivo"
+            
+        print(f"DEBUG (Controller): Estado de ánimo analizado para {usuario_id}: {estado_animo}")
         return {"estado_animo": estado_animo}
-    except HTTPException as e:
-        raise e  # Re-raise the custom exception
     except Exception as e:
-        raise HTTPException(status_code=500, detail="Error al analizar el estado de ánimo del usuario.")
-
+        print(f"ERROR (Controller): Error al analizar el estado de ánimo del usuario '{usuario_id}': {e}")
+        return {"estado_animo": "Error al analizar"}

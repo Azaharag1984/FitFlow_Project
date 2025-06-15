@@ -1,131 +1,179 @@
 from bson import ObjectId
-from fastapi import HTTPException
-from models.ejercicio import ejercicios_collection
+from typing import List, Optional, Dict, Any
+from motor.motor_asyncio import AsyncIOMotorDatabase
 
-def get_ejercicio_by_id(ejercicio_id: str):
+# --- Función auxiliar para convertir ObjectId a str de forma recursiva ---
+def _convert_id_to_str(document: Any) -> Any:
+    """
+    Convierte ObjectId en str dentro de un diccionario o lista de diccionarios.
+    Útil para la serialización de respuestas de la API.
+    """
+    if isinstance(document, dict):
+        return {
+            k: str(v) if isinstance(v, ObjectId) else _convert_id_to_str(v)
+            for k, v in document.items()
+        }
+    elif isinstance(document, list):
+        return [_convert_id_to_str(elem) for elem in document]
+    elif isinstance(document, ObjectId):
+        return str(document)
+    return document
+
+# --- Funciones CRUD para Ejercicios ---
+
+async def get_ejercicio_by_id(db: AsyncIOMotorDatabase, ejercicio_id: str) -> Optional[Dict[str, Any]]:
+    """
+    Obtiene un ejercicio por su ID de la base de datos.
+    """
     try:
-        # Verifica si el ID es válido
         if not ObjectId.is_valid(ejercicio_id):
-            raise HTTPException(status_code=400, detail="ID de ejercicio inválido")
-        
-        # Busca el ejercicio
-        ejercicio = ejercicios_collection.find_one({"_id": ObjectId(ejercicio_id)})
-        if ejercicio is None:
-            raise HTTPException(status_code=404, detail="Ejercicio no encontrado")
-        
-        return ejercicio
-    except HTTPException as e:
-        raise e  # Re-lanza la excepción personalizada
+            print(f"ERROR (Controller): ID de ejercicio inválido: {ejercicio_id}")
+            return None
+
+        ejercicio = await db.ejercicios.find_one({"_id": ObjectId(ejercicio_id)})
+        if ejercicio:
+            processed_ejercicio = _convert_id_to_str(ejercicio)
+            print(f"DEBUG (Controller): Ejercicio recuperado por ID ({ejercicio_id}): {processed_ejercicio}")
+            return processed_ejercicio
+        print(f"DEBUG (Controller): Ejercicio no encontrado para ID: {ejercicio_id}")
+        return None
     except Exception as e:
-        raise HTTPException(status_code=500, detail="Error al recuperar el ejercicio.")
+        print(f"ERROR (Controller): Error al recuperar el ejercicio '{ejercicio_id}': {e}")
+        return None
 
 
-def get_all_ejercicios():
+async def get_all_ejercicios(db: AsyncIOMotorDatabase) -> List[Dict[str, Any]]:
+    """
+    Obtiene todos los ejercicios de la base de datos.
+    """
     try:
-        # Recupera todos los ejercicios
-        ejercicios = list(ejercicios_collection.find())
-        if not ejercicios:
-            raise HTTPException(status_code=404, detail="No se encontraron ejercicios")
+        ejercicios = await db.ejercicios.find().to_list(None)
+        processed_ejercicios = [_convert_id_to_str(e) for e in ejercicios]
+        if not processed_ejercicios:
+            print("DEBUG (Controller): No se encontraron ejercicios.")
         
-        return ejercicios
-    except HTTPException as e:
-        raise e  # Re-lanza la excepción personalizada
+        print(f"DEBUG (Controller): Ejercicios recuperados: {processed_ejercicios}")
+        return processed_ejercicios
     except Exception as e:
-        raise HTTPException(status_code=500, detail="Error al recuperar los ejercicios.")
+        print(f"ERROR (Controller): Error al recuperar los ejercicios: {e}")
+        return []
 
 
-def create_ejercicio(ejercicio_data: dict):
+async def create_ejercicio(db: AsyncIOMotorDatabase, ejercicio_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """
+    Crea un nuevo ejercicio en la base de datos.
+    """
     try:
-        # Valida los campos requeridos
-        if not ejercicio_data.get("nombre") or not ejercicio_data.get("descripcion"):
-            raise HTTPException(status_code=400, detail="Datos de ejercicio incompletos")
-        
-        # Inserta el nuevo ejercicio
-        result = ejercicios_collection.insert_one(ejercicio_data)
+        result = await db.ejercicios.insert_one(ejercicio_data)
         
         if not result.acknowledged:
-            raise HTTPException(status_code=500, detail="Error al crear el ejercicio")
+            print("ERROR (Controller): Fallo en el reconocimiento de la inserción de ejercicio.")
+            return None
         
-        return str(result.inserted_id)
-    except HTTPException as e:
-        raise e  # Re-lanza la excepción personalizada
+        created_ejercicio = await db.ejercicios.find_one({"_id": result.inserted_id})
+        if created_ejercicio:
+            processed_ejercicio = _convert_id_to_str(created_ejercicio)
+            print(f"DEBUG (Controller): Ejercicio creado: {processed_ejercicio}")
+            return processed_ejercicio
+        print("ERROR (Controller): No se pudo recuperar el ejercicio recién creado.")
+        return None
     except Exception as e:
-        raise HTTPException(status_code=500, detail="Error al crear el ejercicio.")
+        print(f"ERROR (Controller): Error al crear el ejercicio: {e}")
+        return None
 
 
-def update_ejercicio(ejercicio_id: str, ejercicio_data: dict):
+async def update_ejercicio(db: AsyncIOMotorDatabase, ejercicio_id: str, ejercicio_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """
+    Actualiza un ejercicio existente en la base de datos.
+    """
     try:
-        # Verifica si el ID es válido
         if not ObjectId.is_valid(ejercicio_id):
-            raise HTTPException(status_code=400, detail="ID de ejercicio inválido")
+            print(f"ERROR (Controller): ID de ejercicio inválido: {ejercicio_id}")
+            return None
 
-        if not ejercicio_data:
-            raise HTTPException(status_code=400, detail="Datos de ejercicio incompletos")
+        object_id = ObjectId(ejercicio_id)
+        
+        ejercicio_data.pop('id', None)
+        ejercicio_data.pop('_id', None)
 
-        result = ejercicios_collection.update_one(
-            {"_id": ObjectId(ejercicio_id)},
+        await db.ejercicios.update_one(
+            {"_id": object_id},
             {"$set": ejercicio_data}
         )
         
-        if result.modified_count == 0:
-            raise HTTPException(status_code=404, detail="Ejercicio no encontrado o no se realizaron cambios")
-        
-        return str(ejercicio_id)  # Retorna el ID del ejercicio actualizado
-    except HTTPException as e:
-        raise e  # Re-lanza la excepción personalizada
+        updated_ejercicio = await db.ejercicios.find_one({"_id": object_id})
+        if updated_ejercicio:
+            processed_ejercicio = _convert_id_to_str(updated_ejercicio)
+            print(f"DEBUG (Controller): Ejercicio actualizado: {processed_ejercicio}")
+            return processed_ejercicio
+        print(f"DEBUG (Controller): Ejercicio no encontrado o no se pudo recuperar después de la actualización para ID: {ejercicio_id}")
+        return None
     except Exception as e:
-        raise HTTPException(status_code=500, detail="Error al actualizar el ejercicio.")
+        print(f"ERROR (Controller): Error al actualizar el ejercicio '{ejercicio_id}': {e}")
+        return None
 
 
-def delete_ejercicio(ejercicio_id: str):
+async def delete_ejercicio(db: AsyncIOMotorDatabase, ejercicio_id: str) -> bool:
+    """
+    Elimina un ejercicio por su ID de la base de datos.
+    """
     try:
-        # Verifica si el ID es válido
         if not ObjectId.is_valid(ejercicio_id):
-            raise HTTPException(status_code=400, detail="ID de ejercicio inválido")
+            print(f"ERROR (Controller): ID de ejercicio inválido: {ejercicio_id}")
+            return False
 
-        result = ejercicios_collection.delete_one({"_id": ObjectId(ejercicio_id)})
+        result = await db.ejercicios.delete_one({"_id": ObjectId(ejercicio_id)})
         
         if result.deleted_count == 0:
-            raise HTTPException(status_code=404, detail="Ejercicio no encontrado")
+            print(f"DEBUG (Controller): Ejercicio no encontrado para eliminar con ID: {ejercicio_id}")
+            return False
         
-        return str({"message": "Ejercicio eliminado exitosamente"})
-    except HTTPException as e:
-        raise e  # Re-lanza la excepción personalizada
+        print(f"DEBUG (Controller): Ejercicio eliminado ({ejercicio_id}): True")
+        return True
     except Exception as e:
-        raise HTTPException(status_code=500, detail="Error al eliminar el ejercicio.")
+        print(f"ERROR (Controller): Error al eliminar el ejercicio '{ejercicio_id}': {e}")
+        return False
 
 
-def get_ejercicios_by_usuario(usuario_id: str):
+async def get_ejercicios_by_usuario(db: AsyncIOMotorDatabase, usuario_id: str) -> List[Dict[str, Any]]:
+    """
+    Busca ejercicios asociados a un usuario.
+    """
     try:
-        # Verifica si el ID de usuario es válido
         if not ObjectId.is_valid(usuario_id):
-            raise HTTPException(status_code=400, detail="ID de usuario inválido")
+            print(f"ERROR (Controller): ID de usuario inválido: {usuario_id}")
+            return []
 
-        # Busca los ejercicios asociados al usuario
-        ejercicios = list(ejercicios_collection.find({"usuario_id": ObjectId(usuario_id)}))
+        ejercicios = await db.ejercicios.find({"usuario_id": ObjectId(usuario_id)}).to_list(None)
         
-        if not ejercicios:
-            raise HTTPException(status_code=404, detail="No se encontraron ejercicios para el usuario")
+        processed_ejercicios = [_convert_id_to_str(e) for e in ejercicios]
+        if not processed_ejercicios:
+            print(f"DEBUG (Controller): No se encontraron ejercicios para el usuario {usuario_id}.")
         
-        return ejercicios
-    except HTTPException as e:
-        raise e  # Re-lanza la excepción personalizada
+        print(f"DEBUG (Controller): Ejercicios para usuario {usuario_id}: {processed_ejercicios}")
+        return processed_ejercicios
     except Exception as e:
-        raise HTTPException(status_code=500, detail="Error al recuperar los ejercicios del usuario.")
+        print(f"ERROR (Controller): Error al recuperar los ejercicios del usuario '{usuario_id}': {e}")
+        return []
 
 
-def get_ejercicios_by_conversacion(conversacion_id: str):
+async def get_ejercicios_by_conversacion(db: AsyncIOMotorDatabase, conversacion_id: str) -> List[Dict[str, Any]]:
+    """
+    Busca ejercicios asociados a una conversación.
+    """
     try:
-        # Verifica si el ID de conversación es válido
         if not ObjectId.is_valid(conversacion_id):
-            raise HTTPException(status_code=400, detail="ID de conversación inválido")
-        # Busca los ejercicios asociados a la conversación
-        ejercicios = list(ejercicios_collection.find({"conversacion_id": ObjectId(conversacion_id)}))
-        if not ejercicios:
-            raise HTTPException(status_code=404, detail="No se encontraron ejercicios para la conversación")
-        return ejercicios
-    except HTTPException as e:
-        raise e  # Re-lanza la excepción personalizada
-    except Exception as e:
-        raise HTTPException(status_code=500, detail="Error al recuperar los ejercicios de la conversación.")
+            print(f"ERROR (Controller): ID de conversación inválido: {conversacion_id}")
+            return []
 
+        ejercicios = await db.ejercicios.find({"conversacion_id": ObjectId(conversacion_id)}).to_list(None)
+        
+        processed_ejercicios = [_convert_id_to_str(e) for e in ejercicios]
+        if not processed_ejercicios:
+            print(f"DEBUG (Controller): No se encontraron ejercicios para la conversación {conversacion_id}.")
+        
+        print(f"DEBUG (Controller): Ejercicios para conversación {conversacion_id}: {processed_ejercicios}")
+        return processed_ejercicios
+    except Exception as e:
+        print(f"ERROR (Controller): Error al recuperar los ejercicios de la conversación '{conversacion_id}': {e}")
+        return []

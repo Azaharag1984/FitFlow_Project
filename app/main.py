@@ -1,30 +1,29 @@
 from fastapi import FastAPI
-from connection.database import connect_to_mongo, close_mongo_connection
-from routes import usuarios, registros, logros, ejercicios, chatbot
+from connection.database import connect_to_mongo, close_mongo_connection # Importa tus funciones de conexión
+from routes import usuarios, registros, logros, ejercicios, chatbot # Tus routers
 
-
-# Create the FastAPI application instance
 app = FastAPI()
 
-app.include_router(usuarios.router)
-app.include_router(registros.router)
-app.include_router(logros.router)
-app.include_router(ejercicios.router)
-app.include_router(chatbot.router)
-
-# Startup event that runs when the application starts
+# Eventos de startup/shutdown para manejar la conexión a la DB
 @app.on_event("startup")
-def startup_db_client():
-    connect_to_mongo()  # Connect to MongoDB when the application starts
-    print("Successfully connected to MongoDB")
+async def startup_db_client():
+    print("Conectando a la base de datos MongoDB...")
+    await connect_to_mongo() # ¡CORREGIDO: Añadido await!
 
-# Shutdown event that runs when the application shuts down
 @app.on_event("shutdown")
-def shutdown_db_client():
-    close_mongo_connection()  # Close the connection to MongoDB when the application shuts down
-    print("MongoDB connection closed")
+async def shutdown_db_client():
+    print("Cerrando conexión a la base de datos MongoDB...")
+    await close_mongo_connection() # ¡CORREGIDO: Añadido await si no estaba!
 
-# Test route
+# Incluir los routers
+app.include_router(usuarios.router, prefix="/usuarios", tags=["Usuarios"])
+app.include_router(registros.router, prefix="/registros", tags=["Registros de Entrenamiento"])
+app.include_router(logros.router, prefix="/logros", tags=["Logros"])
+app.include_router(ejercicios.router, prefix="/ejercicios", tags=["Ejercicios"])
+app.include_router(chatbot.router, prefix="/conversaciones", tags=["Conversaciones y Chatbot"])
+
+# Puedes añadir una ruta raíz de ejemplo si lo deseas
 @app.get("/")
-def read_root():
-    return {"message": "The API is working correctly!"}
+async def read_root():
+    return {"message": "Welcome to FitFlow FastAPI Backend!"}
+    

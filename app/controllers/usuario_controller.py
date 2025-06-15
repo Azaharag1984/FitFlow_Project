@@ -1,206 +1,230 @@
 from bson import ObjectId
-from fastapi import HTTPException
-from models.usuario import usuarios_collection
-# from connection.database import db
 from datetime import datetime
-from pymongo import DESCENDING
+from typing import List, Optional, Dict, Any
+from motor.motor_asyncio import AsyncIOMotorDatabase
 
-def get_usuario_by_id(usuario_id: str):
+# --- Función auxiliar para convertir ObjectId a str de forma recursiva ---
+def _convert_id_to_str(document: Any) -> Any:
+    """
+    Convierte ObjectId en str dentro de un diccionario o lista de diccionarios.
+    Útil para la serialización de respuestas de la API.
+    """
+    if isinstance(document, dict):
+        return {
+            k: str(v) if isinstance(v, ObjectId) else _convert_id_to_str(v)
+            for k, v in document.items()
+        }
+    elif isinstance(document, list):
+        return [_convert_id_to_str(elem) for elem in document]
+    elif isinstance(document, ObjectId):
+        return str(document)
+    return document
+
+# --- Funciones CRUD para Usuarios ---
+
+async def get_all_usuarios(db: AsyncIOMotorDatabase) -> List[Dict[str, Any]]:
+    """
+    Obtiene todos los usuarios de la base de datos.
+    Devuelve una lista de diccionarios que incluyen el _id.
+    """
     try:
-        # Verifica si el ID es válido
-        if not ObjectId.is_valid(usuario_id):
-            raise HTTPException(status_code=400, detail="ID de usuario inválido")
-        
-        # Busca el usuario
-        usuario = usuarios_collection.find_one({"_id": ObjectId(usuario_id)})
-        if usuario is None:
-            raise HTTPException(status_code=404, detail="Usuario no encontrado")
-        
-        return usuario
-    except HTTPException as e:
-        raise e  # Re-lanza la excepción personalizada
+        users = await db.usuarios.find().to_list(None)
+        # Asegúrate de que los _id sean str para la respuesta JSON
+        processed_users = [_convert_id_to_str(user) for user in users]
+        print(f"DEBUG (Controller): Usuarios recuperados: {processed_users}")
+        return processed_users
     except Exception as e:
-        raise HTTPException(status_code=500, detail="Error al recuperar el usuario.")
+        print(f"ERROR (Controller): Error al obtener todos los usuarios: {e}")
+        return []
 
-
-def get_all_usuarios():
+async def get_usuario_by_id(db: AsyncIOMotorDatabase, usuario_id: str) -> Optional[Dict[str, Any]]:
+    """
+    Obtiene un usuario por su ObjectId de la base de datos.
+    """
     try:
-        # Recupera todos los usuarios
-        usuarios = list(usuarios_collection.find())
-        
-        if not usuarios:
-            raise HTTPException(status_code=404, detail="No se encontraron usuarios")
-        
-        return usuarios  # Retorna la lista de usuarios
-
-    except HTTPException as e:
-        raise e  # Re-lanza la excepción personalizada
+        object_id = ObjectId(usuario_id)
+        user = await db.usuarios.find_one({"_id": object_id})
+        if user:
+            processed_user = _convert_id_to_str(user)
+            print(f"DEBUG (Controller): Usuario recuperado por ID ({usuario_id}): {processed_user}")
+            return processed_user
+        print(f"DEBUG (Controller): Usuario no encontrado para ID '{usuario_id}'")
+        return None
     except Exception as e:
-        raise HTTPException(status_code=500, detail="Error al recuperar los usuarios.")
+        print(f"ERROR (Controller): Error al obtener usuario por ID '{usuario_id}': {e}")
+        return None
 
-
-def create_usuario(usuario_data: dict):
+async def create_usuario(db: AsyncIOMotorDatabase, usuario_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """
+    Crea un nuevo usuario en la base de datos.
+    usuario_data debe ser un diccionario que NO contenga '_id'.
+    """
     try:
-        # Valida los campos requeridos
-        if not usuario_data.get("nombre") or not usuario_data.get("email"):
-            raise HTTPException(status_code=400, detail="Datos de usuario incompletos")
+        if "fecha_creacion" not in usuario_data or usuario_data["fecha_creacion"] is None:
+            usuario_data["fecha_creacion"] = datetime.utcnow()
+
+        result = await db.usuarios.insert_one(usuario_data)
         
-        # Inserta el nuevo usuario
-        result = usuarios_collection.insert_one(usuario_data)
-        
-        if not result.acknowledged:
-            raise HTTPException(status_code=500, detail="Error al crear el usuario")
-        
-        return str(result.inserted_id)
-    except HTTPException as e:
-        raise e  # Re-lanza la excepción personalizada
+        created_user = await db.usuarios.find_one({"_id": result.inserted_id})
+        if created_user:
+            processed_user = _convert_id_to_str(created_user)
+            print(f"DEBUG (Controller): Usuario creado: {processed_user}")
+            return processed_user
+        print("ERROR (Controller): No se pudo recuperar el usuario recién creado.")
+        return None
     except Exception as e:
-        raise HTTPException(status_code=500, detail="Error al crear el usuario.")
+        print(f"ERROR (Controller): Error al crear usuario: {e}")
+        return None
 
-
-def update_usuario(usuario_id: str, usuario_data: dict):
+async def update_usuario(db: AsyncIOMotorDatabase, usuario_id: str, usuario_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """
+    Actualiza un usuario existente en la base de datos.
+    usuario_data debe ser un diccionario con los campos a actualizar.
+    """
     try:
-        # Verifica si el ID es válido
-        if not ObjectId.is_valid(usuario_id):
-            raise HTTPException(status_code=400, detail="ID de usuario inválido")
+        object_id = ObjectId(usuario_id)
+        
+        usuario_data.pop('id', None)
+        usuario_data.pop('_id', None)
 
-        # Verifica que los datos no estén vacíos
-        if not usuario_data:
-            raise HTTPException(status_code=400, detail="Datos de usuario incompletos")
-
-        result = usuarios_collection.update_one(
-            {"_id": ObjectId(usuario_id)},
+        result = await db.usuarios.update_one(
+            {"_id": object_id},
             {"$set": usuario_data}
         )
-        
         if result.matched_count == 0:
-            raise HTTPException(status_code=404, detail="Usuario no encontrado")
+            print(f"DEBUG (Controller): No se encontró usuario para actualizar con ID: {usuario_id}")
+            return None
         
-        return str({"message": "Usuario actualizado exitosamente"})
-    except HTTPException as e:
-        raise e  # Re-lanza la excepción personalizada
+        updated_user = await db.usuarios.find_one({"_id": object_id})
+        if updated_user:
+            processed_user = _convert_id_to_str(updated_user)
+            print(f"DEBUG (Controller): Usuario actualizado: {processed_user}")
+            return processed_user
+        print(f"ERROR (Controller): No se pudo recuperar el usuario actualizado para ID: {usuario_id}")
+        return None
     except Exception as e:
-        raise HTTPException(status_code=500, detail="Error al actualizar el usuario.")
+        print(f"ERROR (Controller): Error al actualizar usuario '{usuario_id}': {e}")
+        return None
 
-
-def delete_usuario(usuario_id: str):
+async def delete_usuario(db: AsyncIOMotorDatabase, usuario_id: str) -> bool:
+    """
+    Elimina un usuario por su ID de la base de datos.
+    """
     try:
-        # Verifica si el ID es válido
-        if not ObjectId.is_valid(usuario_id):
-            raise HTTPException(status_code=400, detail="ID de usuario inválido")
-
-        # Elimina el usuario
-        result = usuarios_collection.delete_one({"_id": ObjectId(usuario_id)})
-        
-        if result.deleted_count == 0:
-            raise HTTPException(status_code=404, detail="Usuario no encontrado")
-        
-        return str({"message": "Usuario eliminado exitosamente"})
-    except HTTPException as e:
-        raise e  # Re-lanza la excepción personalizada
+        result = await db.usuarios.delete_one({"_id": ObjectId(usuario_id)})
+        print(f"DEBUG (Controller): Usuario eliminado ({usuario_id}): {result.deleted_count > 0}")
+        return result.deleted_count > 0
     except Exception as e:
-        raise HTTPException(status_code=500, detail="Error al eliminar el usuario.")
+        print(f"ERROR (Controller): Error al eliminar usuario '{usuario_id}': {e}")
+        return False
 
+# --- Funciones de Progreso ---
 
-async def get_ultimo_peso_por_ejercicio(usuario_id):
+async def get_ultimo_peso_por_ejercicio(db: AsyncIOMotorDatabase, usuario_id: str) -> List[Dict[str, Any]]:
+    """
+    Obtiene el último peso registrado por ejercicio para un usuario.
+    """
     try:
-        # Verifica si el ID de usuario es válido
-        if not ObjectId.is_valid(usuario_id):
-            raise HTTPException(status_code=400, detail="ID de usuario inválido")
-
-        # Define el pipeline de agregación
         pipeline = [
-            {"$match": {"usuario_id": ObjectId(usuario_id)}},
+            {"$match": {"usuario_id": usuario_id}},
             {"$sort": {"fecha_registro": -1}},
             {"$group": {
                 "_id": "$ejercicio_nombre",
                 "ultimo_peso": {"$first": "$peso_levantado"},
-                "fecha": {"$first": "$fecha_registro"}
-            }}
-        ]
-
-        # Ejecuta la agregación y retorna los resultados
-        return await db.registros.aggregate(pipeline).to_list(length=100)
-    except HTTPException as e:
-        raise e  # Re-lanza la excepción personalizada
-    except Exception as e:
-        raise HTTPException(status_code=500, detail="Error al recuperar el último peso por ejercicio.")
-
-
-async def get_mejor_marca(usuario_id, ejercicio_nombre):
-    try:
-        # Verifica si el ID de usuario es válido
-        if not ObjectId.is_valid(usuario_id):
-            raise HTTPException(status_code=400, detail="ID de usuario inválido")
-        
-        if not ejercicio_nombre:
-            raise HTTPException(status_code=400, detail="Nombre del ejercicio es requerido")
-        if not isinstance(ejercicio_nombre, str):
-            raise HTTPException(status_code=400, detail="El nombre del ejercicio debe ser una cadena de texto")
-        
-        # Define el pipeline de agregación para obtener la mejor marca
-        pipeline = [
-            {"$match": {
-                "usuario_id": ObjectId(usuario_id),
-                "ejercicio_nombre": ejercicio_nombre
+                "ultimas_repeticiones": {"$first": "$repeticiones"},
+                "ultima_fecha": {"$first": "$fecha_registro"}
             }},
-            {"$group": {
-                "_id": "$ejercicio_nombre",
-                "mejor_marca": {"$max": "$peso_levantado"}
-            }}
-        ]
-        result = await db.registros.aggregate(pipeline).to_list(1)
-        return result[0] if result else {}
-    except HTTPException as e:
-        raise e  # Re-lanza la excepción personalizada
-    except Exception as e:  
-        raise HTTPException(status_code=500, detail="Error al recuperar la mejor marca del ejercicio.")
-
-
-async def get_frecuencia_semanal(usuario_id):
-    try:
-        # Verifica si el ID de usuario es válido
-        if not ObjectId.is_valid(usuario_id):
-            raise HTTPException(status_code=400, detail="ID de usuario inválido")
-        
-        # Define el pipeline de agregación para calcular la frecuencia semanal
-        pipeline = [
-            {"$match": {"usuario_id": ObjectId(usuario_id)}},
             {"$project": {
-                "año": {"$year": "$fecha_registro"},
-                "semana": {"$isoWeek": "$fecha_registro"}
-            }},
-            {"$group": {
-                "_id": {"año": "$año", "semana": "$semana"},
-                "dias": {"$sum": 1}
+                "ejercicio_nombre": "$_id",
+                "ultimo_peso": 1,
+                "ultimas_repeticiones": 1,
+                "ultima_fecha": 1,
+                "_id": 0 # Excluir el _id del grupo para este caso específico si no lo necesitas
             }}
         ]
-        return await db.registros.aggregate(pipeline).to_list(length=52)
-    except HTTPException as e:
-        raise e  # Re-lanza la excepción personalizada
+        result = await db.registros.aggregate(pipeline).to_list(None)
+        # Convertir cualquier ObjectId residual en el resultado de la agregación
+        processed_result = _convert_id_to_str(result)
+        print(f"DEBUG (Controller): Último peso por ejercicio para {usuario_id}: {processed_result}")
+        return processed_result
     except Exception as e:
-        raise HTTPException(status_code=500, detail="Error al recuperar la frecuencia semanal de ejercicios.")
+        print(f"ERROR (Controller): Error al obtener último peso por ejercicio para {usuario_id}: {e}")
+        return []
 
-async def get_volumen_total(usuario_id):
+async def get_mejor_marca(db: AsyncIOMotorDatabase, usuario_id: str, ejercicio_nombre: str) -> Optional[Dict[str, Any]]:
+    """
+    Obtiene la mejor marca (peso * repeticiones o solo peso) para un ejercicio específico de un usuario.
+    """
     try:
-        # Verifica si el ID de usuario es válido
-        if not ObjectId.is_valid(usuario_id):
-            raise HTTPException(status_code=400, detail="ID de usuario inválido")
-        
-        # Define el pipeline de agregación para calcular el volumen total
         pipeline = [
-            {"$match": {"usuario_id": ObjectId(usuario_id)}},
-            {"$project": {
-                "volumen": {"$multiply": ["$peso_levantado", "$repeticiones"]}
-            }},
-            {"$group": {"_id": None, "volumen_total": {"$sum": "$volumen"}}}
+            {"$match": {"usuario_id": usuario_id, "ejercicio_nombre": ejercicio_nombre}},
+            {"$addFields": {"volumen": {"$multiply": ["$peso_levantado", "$repeticiones"]}}},
+            {"$sort": {"volumen": -1, "peso_levantado": -1, "repeticiones": -1}},
+            {"$limit": 1}
         ]
-        result = await db.registros.aggregate(pipeline).to_list(1)
-        return result[0]["volumen_total"] if result else 0
-    except HTTPException as e:
-        raise e  # Re-lanza la excepción personalizada
+        result = await db.registros.aggregate(pipeline).to_list(None)
+        if result:
+            # Convertir cualquier ObjectId residual en el resultado de la agregación
+            processed_result = _convert_id_to_str(result[0])
+            print(f"DEBUG (Controller): Mejor marca para {usuario_id} - {ejercicio_nombre}: {processed_result}")
+            return processed_result
+        print(f"DEBUG (Controller): No se encontró mejor marca para {usuario_id} - {ejercicio_nombre}")
+        return None
     except Exception as e:
-        raise HTTPException(status_code=500, detail="Error al recuperar el volumen total de ejercicios.")
+        print(f"ERROR (Controller): Error al obtener mejor marca para {usuario_id} - {ejercicio_nombre}: {e}")
+        return None
+
+async def get_frecuencia_semanal(db: AsyncIOMotorDatabase, usuario_id: str) -> List[Dict[str, Any]]:
+    """
+    Calcula la frecuencia semanal de registros para un usuario.
+    """
+    try:
+        pipeline = [
+            {"$match": {"usuario_id": usuario_id}},
+            {"$group": {
+                "_id": {
+                    "año": {"$year": "$fecha_registro"},
+                    "semana": {"$week": "$fecha_registro"}
+                },
+                "dias": {"$addToSet": {"$dayOfWeek": "$fecha_registro"}},
+                "conteo": {"$sum": 1}
+            }},
+            {"$project": {
+                "año": "$_id.año",
+                "semana": "$_id.semana",
+                "dias": {"$size": "$dias"},
+                "conteo_registros": "$conteo",
+                "_id": 0
+            }},
+            {"$sort": {"año": 1, "semana": 1}}
+        ]
+        result = await db.registros.aggregate(pipeline).to_list(None)
+        # Convertir cualquier ObjectId residual en el resultado de la agregación (si _id del grupo fuera ObjectId, etc.)
+        processed_result = _convert_id_to_str(result)
+        print(f"DEBUG (Controller): Frecuencia semanal para {usuario_id}: {processed_result}")
+        return processed_result
+    except Exception as e:
+        print(f"ERROR (Controller): Error al obtener frecuencia semanal para {usuario_id}: {e}")
+        return []
 
 
-
+async def get_volumen_total(db: AsyncIOMotorDatabase, usuario_id: str) -> float:
+    """
+    Calcula el volumen total de levantamiento para un usuario.
+    """
+    try:
+        pipeline = [
+            {"$match": {"usuario_id": usuario_id}},
+            {"$group": {
+                "_id": None,
+                "volumen_total": {"$sum": {"$multiply": ["$peso_levantado", "$repeticiones"]}}
+            }}
+        ]
+        result = await db.registros.aggregate(pipeline).to_list(None)
+        # La agregación aquí es simple y debería devolver un número, no un ObjectId.
+        volumen = result[0]["volumen_total"] if result else 0.0
+        print(f"DEBUG (Controller): Volumen total para {usuario_id}: {volumen}")
+        return volumen
+    except Exception as e:
+        print(f"ERROR (Controller): Error al obtener volumen total para {usuario_id}: {e}")
+        return 0.0

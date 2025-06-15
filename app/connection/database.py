@@ -1,4 +1,5 @@
-from pymongo import MongoClient
+from motor.motor_asyncio import AsyncIOMotorClient # ¡Cambio clave aquí!
+from typing import Optional
 import os
 from dotenv import load_dotenv
 
@@ -8,11 +9,11 @@ MONGO_URI = os.getenv("MONGO_URI")
 DB_NAME = os.getenv("DB_NAME")
 
 class Database:
-    client = None
+    client: Optional[AsyncIOMotorClient] = None # Tipo de cliente actualizado
 
-def connect_to_mongo():
+async def connect_to_mongo(): # ¡Ahora es una función asíncrona!
     try:
-        Database.client = MongoClient(MONGO_URI)
+        Database.client = AsyncIOMotorClient(MONGO_URI) # ¡Cambio clave aquí!
         db = Database.client[DB_NAME]
         print(f"Conectado a la base de datos {DB_NAME} en {MONGO_URI}")
         return db
@@ -20,7 +21,8 @@ def connect_to_mongo():
         print(f"Error al conectar a la base de datos: {e}")
         raise e
 
-def close_mongo_connection():
+async def close_mongo_connection(): # ¡Ahora es una función asíncrona!
     if Database.client:
         Database.client.close()
         print("Conexión a la base de datos cerrada.")
+

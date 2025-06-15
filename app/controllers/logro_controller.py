@@ -1,158 +1,179 @@
 from bson import ObjectId
-from fastapi import HTTPException
-from models.logro import logros_collection
+from datetime import datetime
+from typing import List, Optional, Dict, Any
+from motor.motor_asyncio import AsyncIOMotorDatabase
 
-def get_logro_by_id(logro_id: str):
+# --- Función auxiliar para convertir ObjectId a str de forma recursiva ---
+def _convert_id_to_str(document: Any) -> Any:
+    """
+    Convierte ObjectId en str dentro de un diccionario o lista de diccionarios.
+    Útil para la serialización de respuestas de la API.
+    """
+    if isinstance(document, dict):
+        return {
+            k: str(v) if isinstance(v, ObjectId) else _convert_id_to_str(v)
+            for k, v in document.items()
+        }
+    elif isinstance(document, list):
+        return [_convert_id_to_str(elem) for elem in document]
+    elif isinstance(document, ObjectId):
+        return str(document)
+    return document
+
+# --- Funciones CRUD para Logros ---
+
+async def get_logro_by_id(db: AsyncIOMotorDatabase, logro_id: str) -> Optional[Dict[str, Any]]:
+    """
+    Obtiene un logro por su ID de la base de datos.
+    """
     try:
-        # Verifica si el ID es válido
         if not ObjectId.is_valid(logro_id):
-            raise HTTPException(status_code=400, detail="ID de logro inválido")
-        
-        # Busca el logro
-        logro = logros_collection.find_one({"_id": ObjectId(logro_id)})
-        if logro is None:
-            raise HTTPException(status_code=404, detail="Logro no encontrado")
-        
-        return logro
-    except HTTPException as e:
-        raise e  # Re-lanza la excepción personalizada
+            print(f"ERROR (Controller): ID de logro inválido: {logro_id}")
+            return None
+
+        logro = await db.logros.find_one({"_id": ObjectId(logro_id)})
+        if logro:
+            processed_logro = _convert_id_to_str(logro)
+            print(f"DEBUG (Controller): Logro recuperado por ID ({logro_id}): {processed_logro}")
+            return processed_logro
+        print(f"DEBUG (Controller): Logro no encontrado para ID: {logro_id}")
+        return None
     except Exception as e:
-        raise HTTPException(status_code=500, detail="Error al recuperar el logro.")
+        print(f"ERROR (Controller): Error al recuperar el logro '{logro_id}': {e}")
+        return None
 
 
-def get_all_logros():
+async def get_all_logros(db: AsyncIOMotorDatabase) -> List[Dict[str, Any]]:
+    """
+    Obtiene todos los logros de la base de datos.
+    """
     try:
-        # Recupera todos los logros
-        logros = list(logros_collection.find())
-        if not logros:
-            raise HTTPException(status_code=404, detail="No se encontraron logros")
+        logros = await db.logros.find().to_list(None)
+        processed_logros = [_convert_id_to_str(l) for l in logros]
+        if not processed_logros:
+            print("DEBUG (Controller): No se encontraron logros.")
         
-        return logros
-    except HTTPException as e:
-        raise e  # Re-lanza la excepción personalizada
+        print(f"DEBUG (Controller): Logros recuperados: {processed_logros}")
+        return processed_logros
     except Exception as e:
-        raise HTTPException(status_code=500, detail="Error al recuperar los logros.")
+        print(f"ERROR (Controller): Error al recuperar los logros: {e}")
+        return []
 
 
-def create_logro(logro_data: dict):
+async def create_logro(db: AsyncIOMotorDatabase, logro_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """
+    Crea un nuevo logro en la base de datos.
+    """
     try:
-        # Valida los campos requeridos
-        if not logro_data.get("nombre") or not logro_data.get("descripcion"):
-            raise HTTPException(status_code=400, detail="Datos de logro incompletos")
-        
-        # Inserta el nuevo logro
-        result = logros_collection.insert_one(logro_data)
+        if "fecha_logro" in logro_data and isinstance(logro_data["fecha_logro"], str):
+             logro_data["fecha_logro"] = datetime.fromisoformat(logro_data["fecha_logro"])
+
+        result = await db.logros.insert_one(logro_data)
         
         if not result.acknowledged:
-            raise HTTPException(status_code=500, detail="Error al crear el logro")
+            print("ERROR (Controller): Fallo en el reconocimiento de la inserción de logro.")
+            return None
         
-        return str(result.inserted_id)
-    except HTTPException as e:
-        raise e  # Re-lanza la excepción personalizada
+        created_logro = await db.logros.find_one({"_id": result.inserted_id})
+        if created_logro:
+            processed_logro = _convert_id_to_str(created_logro)
+            print(f"DEBUG (Controller): Logro creado: {processed_logro}")
+            return processed_logro
+        print("ERROR (Controller): No se pudo recuperar el logro recién creado.")
+        return None
     except Exception as e:
-        raise HTTPException(status_code=500, detail="Error al crear el logro.")
+        print(f"ERROR (Controller): Error al crear el logro: {e}")
+        return None
 
 
-def update_logro(logro_id: str, logro_data: dict):
+async def update_logro(db: AsyncIOMotorDatabase, logro_id: str, logro_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """
+    Actualiza un logro existente en la base de datos.
+    """
     try:
-        # Verifica si el ID es válido
         if not ObjectId.is_valid(logro_id):
-            raise HTTPException(status_code=400, detail="ID de logro inválido")
+            print(f"ERROR (Controller): ID de logro inválido: {logro_id}")
+            return None
 
-        # Actualiza el logro
-        result = logros_collection.update_one(
-            {"_id": ObjectId(logro_id)},
+        object_id = ObjectId(logro_id)
+        
+        logro_data.pop('id', None)
+        logro_data.pop('_id', None)
+
+        await db.logros.update_one(
+            {"_id": object_id},
             {"$set": logro_data}
         )
         
-        if result.modified_count == 0:
-            raise HTTPException(status_code=404, detail="Logro no encontrado o no se realizaron cambios")
-        
-        return str(logro_id)
-    except HTTPException as e:
-        raise e  # Re-lanza la excepción personalizada
+        updated_logro = await db.logros.find_one({"_id": object_id})
+        if updated_logro:
+            processed_logro = _convert_id_to_str(updated_logro)
+            print(f"DEBUG (Controller): Logro actualizado: {processed_logro}")
+            return processed_logro
+        print(f"DEBUG (Controller): Logro no encontrado o no se pudo recuperar después de la actualización para ID: {logro_id}")
+        return None
     except Exception as e:
-        raise HTTPException(status_code=500, detail="Error al actualizar el logro.")
+        print(f"ERROR (Controller): Error al actualizar el logro '{logro_id}': {e}")
+        return None
 
 
-def delete_logro(logro_id: str):
+async def delete_logro(db: AsyncIOMotorDatabase, logro_id: str) -> bool:
+    """
+    Elimina un logro por su ID de la base de datos.
+    """
     try:
-        # Verifica si el ID es válido
         if not ObjectId.is_valid(logro_id):
-            raise HTTPException(status_code=400, detail="ID de logro inválido")
+            print(f"ERROR (Controller): ID de logro inválido: {logro_id}")
+            return False
 
-        # Elimina el logro
-        result = logros_collection.delete_one({"_id": ObjectId(logro_id)})
+        result = await db.logros.delete_one({"_id": ObjectId(logro_id)})
         
         if result.deleted_count == 0:
-            raise HTTPException(status_code=404, detail="Logro no encontrado")
+            print(f"DEBUG (Controller): Logro no encontrado para eliminar con ID: {logro_id}")
+            return False
         
-        return str({"detail": "Logro eliminado exitosamente"})
-    except HTTPException as e:
-        raise e  # Re-lanza la excepción personalizada
+        print(f"DEBUG (Controller): Logro eliminado ({logro_id}): True")
+        return True
     except Exception as e:
-        raise HTTPException(status_code=500, detail="Error al eliminar el logro.")
+        print(f"ERROR (Controller): Error al eliminar el logro '{logro_id}': {e}")
+        return False
 
 
-def get_logros_by_usuario(usuario_id: str):
+async def get_logros_by_usuario(db: AsyncIOMotorDatabase, usuario_id: str) -> List[Dict[str, Any]]:
+    """
+    Busca los logros de un usuario específico.
+    """
     try:
-        # Verifica si el ID de usuario es válido
-        if not ObjectId.is_valid(usuario_id):
-            raise HTTPException(status_code=400, detail="ID de usuario inválido")
+        query_user_id = usuario_id
 
-        # Busca los logros del usuario
-        logros = list(logros_collection.find({"usuario_id": ObjectId(usuario_id)}))
+        logros = await db.logros.find({"usuario_id": query_user_id}).to_list(None)
         
-        if not logros:
-            raise HTTPException(status_code=404, detail="No se encontraron logros para el usuario")
+        processed_logros = [_convert_id_to_str(l) for l in logros]
+        if not processed_logros:
+            print(f"DEBUG (Controller): No se encontraron logros para el usuario {usuario_id}")
         
-        return logros
-    except HTTPException as e:
-        raise e  # Re-lanza la excepción personalizada
+        print(f"DEBUG (Controller): Logros para usuario {usuario_id}: {processed_logros}")
+        return processed_logros
     except Exception as e:
-        raise HTTPException(status_code=500, detail="Error al recuperar los logros del usuario.")
+        print(f"ERROR (Controller): Error al recuperar los logros del usuario '{usuario_id}': {e}")
+        return []
 
 
-def add_logro_to_usuario(usuario_id: str, logro_id: str):
+async def get_logros_tipo(db: AsyncIOMotorDatabase, usuario_id: str, tipo: str) -> List[Dict[str, Any]]:
+    """
+    Busca los logros de un usuario por tipo específico.
+    """
     try:
-        # Verifica si el ID de usuario es válido
-        if not ObjectId.is_valid(usuario_id):
-            raise HTTPException(status_code=400, detail="ID de usuario inválido")
-        
-        # Verifica si el ID de logro es válido
-        if not ObjectId.is_valid(logro_id):
-            raise HTTPException(status_code=400, detail="ID de logro inválido")
-        
-        # Actualiza el usuario para agregar el logro
-        result = logros_collection.update_one(
-            {"_id": ObjectId(logro_id)},
-            {"$addToSet": {"usuarios": ObjectId(usuario_id)}}
-        )
-        
-        if result.modified_count == 0:
-            raise HTTPException(status_code=404, detail="Logro no encontrado o ya agregado al usuario")
-        
-        return {"detail": "Logro agregado al usuario exitosamente"}
-    except HTTPException as e:
-        raise e  # Re-lanza la excepción personalizada
-    except Exception as e:
-        raise HTTPException(status_code=500, detail="Error al agregar el logro al usuario.")
+        query_user_id = usuario_id
 
-
-def get_logros_tipo(usuario_id, tipo):
-    try:
-        # Verifica si el ID de usuario es válido
-        if not ObjectId.is_valid(usuario_id):
-            raise HTTPException(status_code=400, detail="ID de usuario inválido")
+        logros = await db.logros.find({"usuario_id": query_user_id, "tipo": tipo}).to_list(None)
         
-        # Busca los logros del usuario por tipo
-        logros = list(logros_collection.find({"usuario_id": ObjectId(usuario_id), "tipo": tipo}))
+        processed_logros = [_convert_id_to_str(l) for l in logros]
+        if not processed_logros:
+            print(f"DEBUG (Controller): No se encontraron logros del tipo '{tipo}' para el usuario {usuario_id}")
         
-        if not logros:
-            raise HTTPException(status_code=404, detail="No se encontraron logros del tipo especificado para el usuario")
-        
-        return logros
-    except HTTPException as e:
-        raise e  # Re-lanza la excepción personalizada
+        print(f"DEBUG (Controller): Logros de tipo '{tipo}' para usuario {usuario_id}: {processed_logros}")
+        return processed_logros
     except Exception as e:
-        raise HTTPException(status_code=500, detail="Error al recuperar los logros del tipo especificado del usuario.")
+        print(f"ERROR (Controller): Error al recuperar los logros del tipo '{tipo}' del usuario '{usuario_id}': {e}")
+        return []
