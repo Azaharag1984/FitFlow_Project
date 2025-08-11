@@ -144,4 +144,4 @@ GET	/conversaciones/{user_id}	Ver historial de conversación
 
 📄 Licencia
 
-MIT License © 2025 - [Tu Nombre o Equipo]
+MIT License © 2025 - Azahara García, Laura Sánchez y Manolo Santana
